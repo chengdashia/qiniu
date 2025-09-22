@@ -41,16 +41,16 @@ def get_client():
 def submit_hunyuan(payload: dict) -> str:
     """提交文生/图生 3D 任务，返回 job_id"""
     client = get_client()
-    req = models.SubmitHunyuanTo3DJobRequest()
+    req = models.SubmitHunyuanTo3DProJobRequest()
     req.from_json_string(json.dumps(payload))
-    resp = client.SubmitHunyuanTo3DJob(req)
+    resp = client.SubmitHunyuanTo3DProJob(req)
     return resp.JobId  # 注意：SDK 响应字段是直接属性
 
 def query_hunyuan(job_id: str):
     client = get_client()
-    req = models.QueryHunyuanTo3DJobRequest()
+    req = models.QueryHunyuanTo3DProJobRequest()
     req.from_json_string(json.dumps({"JobId": job_id}))
-    return client.QueryHunyuanTo3DJob(req)
+    return client.QueryHunyuanTo3DProJob(req)
 
 def record_job(job_id: str, status: str, files=None, error=None):
     with _job_lock:
