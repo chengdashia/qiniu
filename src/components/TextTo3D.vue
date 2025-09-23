@@ -18,9 +18,9 @@
         label-width="80px"
         @submit.prevent="handleGenerate"
       >
-        <el-form-item label="文本描述" prop="text" required>
+        <el-form-item label="文本描述" prop="prompt" required>
           <el-input
-            v-model="form.text"
+            v-model="form.prompt"
             type="textarea"
             :rows="4"
             placeholder="请描述您想要生成的3D模型，例如：一只可爱的小猫咪、现代风格的椅子、科幻飞船等..."
@@ -30,29 +30,47 @@
           />
         </el-form-item>
         
-        <el-form-item label="生成质量" prop="quality">
-          <el-radio-group v-model="form.quality" :disabled="isGenerating">
-            <el-radio value="low">低质量 (快速生成)</el-radio>
-            <el-radio value="medium">中等质量 (推荐)</el-radio>
-            <el-radio value="high">高质量 (精细模型)</el-radio>
+        <el-form-item label="生成类型" prop="generate_type">
+          <el-radio-group v-model="form.generate_type" :disabled="isGenerating">
+            <el-radio value="Normal">普通模式</el-radio>
+            <el-radio value="LowPoly">低多边形</el-radio>
+            <el-radio value="Geometry">几何风格</el-radio>
+            <el-radio value="Sketch">素描风格</el-radio>
           </el-radio-group>
         </el-form-item>
         
-        <el-form-item label="风格设置" prop="style">
-          <el-select
-            v-model="form.style"
-            placeholder="选择生成风格 (可选)"
-            clearable
+        <el-form-item label="面数设置" prop="face_count">
+          <el-slider
+            v-model="form.face_count"
+            :min="40000"
+            :max="500000"
+            :step="10000"
             :disabled="isGenerating"
-            style="width: 100%"
-          >
-            <el-option label="写实风格" value="realistic" />
-            <el-option label="卡通风格" value="cartoon" />
-            <el-option label="低聚合风格" value="low-poly" />
-            <el-option label="科幻风格" value="sci-fi" />
-            <el-option label="古典风格" value="classical" />
-            <el-option label="现代简约" value="modern" />
-          </el-select>
+            :format-tooltip="formatFaceCount"
+            show-input
+            input-size="small"
+          />
+          <div class="face-count-hint">
+            <span>当前设置: {{ formatFaceCount(form.face_count) }}</span>
+            <el-tooltip content="面数越高，模型越精细，但生成时间也越长" placement="top">
+              <el-icon class="hint-icon"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </div>
+        </el-form-item>
+        
+        <el-form-item label="高级选项">
+          <div class="advanced-options">
+            <el-checkbox v-model="form.polish" :disabled="isGenerating">
+              启用模型抛光
+            </el-checkbox>
+            <el-checkbox v-model="form.enable_pbr" :disabled="isGenerating">
+              启用PBR材质
+            </el-checkbox>
+          </div>
+          <div class="option-hints">
+            <p>• 模型抛光：提高模型表面光滑度</p>
+            <p>• PBR材质：生成更真实的材质效果</p>
+          </div>
         </el-form-item>
         
         <!-- 预设示例 -->
@@ -60,14 +78,14 @@
           <div class="example-buttons">
             <el-button
               v-for="example in examples"
-              :key="example.text"
+              :key="example.prompt"
               size="small"
               type="info"
               plain
               @click="useExample(example)"
               :disabled="isGenerating"
             >
-              {{ example.text }}
+              {{ example.prompt }}
             </el-button>
           </div>
         </el-form-item>
@@ -78,7 +96,7 @@
             size="large"
             @click="handleGenerate"
             :loading="isGenerating"
-            :disabled="!form.text.trim()"
+            :disabled="!form.prompt?.trim()"
             style="width: 100%"
           >
             <el-icon v-if="!isGenerating"><Promotion /></el-icon>
@@ -178,7 +196,8 @@ import {
   EditPen, 
   Promotion, 
   Loading, 
-  Clock 
+  Clock,
+  QuestionFilled
 } from '@element-plus/icons-vue'
 import { useModel3DStore } from '../stores/model3d'
 import type { TextTo3DRequest } from '../types/3d'
@@ -191,6 +210,12 @@ const formRef = ref<FormInstance>()
 
 // 表单数据
 const form = reactive<TextTo3DRequest>({
+  prompt: '',
+  polish: true,
+  enable_pbr: false, // 默认为false
+  face_count: 400000, // 默认40万面
+  generate_type: 'Normal', // 默认Normal
+  // 兼容性字段
   text: '',
   quality: 'medium',
   style: ''
@@ -198,7 +223,7 @@ const form = reactive<TextTo3DRequest>({
 
 // 表单验证规则
 const rules = {
-  text: [
+  prompt: [
     { required: true, message: '请输入文本描述', trigger: 'blur' },
     { min: 5, message: '描述至少需要5个字符', trigger: 'blur' },
     { max: 500, message: '描述不能超过500个字符', trigger: 'blur' }
@@ -207,12 +232,12 @@ const rules = {
 
 // 预设示例
 const examples = [
-  { text: '一只可爱的橙色小猫', quality: 'medium' as const, style: 'cartoon' },
-  { text: '现代简约的办公椅', quality: 'medium' as const, style: 'modern' },
-  { text: '科幻风格的宇宙飞船', quality: 'medium' as const, style: 'sci-fi' },
-  { text: '古典欧式的花瓶', quality: 'medium' as const, style: 'classical' },
-  { text: '卡通风格的小房子', quality: 'medium' as const, style: 'cartoon' },
-  { text: '低聚合风格的小岛', quality: 'medium' as const, style: 'low-poly' }
+  { prompt: '一只可爱的橙色小猫', generate_type: 'Normal' as const, polish: true, enable_pbr: false, face_count: 200000 },
+  { prompt: '现代简约的办公椅', generate_type: 'Normal' as const, polish: true, enable_pbr: true, face_count: 300000 },
+  { prompt: '科幻风格的宇宙飞船', generate_type: 'LowPoly' as const, polish: false, enable_pbr: false, face_count: 150000 },
+  { prompt: '古典欧式的花瓶', generate_type: 'Normal' as const, polish: true, enable_pbr: true, face_count: 400000 },
+  { prompt: '卡通风格的小房子', generate_type: 'LowPoly' as const, polish: false, enable_pbr: false, face_count: 100000 },
+  { prompt: '简约风格的小岛', generate_type: 'Geometry' as const, polish: false, enable_pbr: false, face_count: 80000 }
 ]
 
 // 计算属性
@@ -243,9 +268,15 @@ async function handleGenerate() {
     
     // 调用生成接口
     const result = await model3dStore.generateFromText({
-      text: form.text.trim(),
-      quality: form.quality,
-      style: form.style || undefined
+      prompt: form.prompt.trim(),
+      polish: form.polish,
+      enable_pbr: form.enable_pbr,
+      face_count: form.face_count,
+      generate_type: form.generate_type,
+      // 兼容性字段
+      text: form.prompt.trim(),
+      quality: 'medium',
+      style: undefined
     })
     
     if (result) {
@@ -260,9 +291,13 @@ async function handleGenerate() {
 }
 
 function useExample(example: typeof examples[0]) {
-  form.text = example.text
-  form.quality = example.quality
-  form.style = example.style
+  form.prompt = example.prompt
+  form.generate_type = example.generate_type
+  form.polish = example.polish
+  form.enable_pbr = example.enable_pbr
+  form.face_count = example.face_count
+  // 同步兼容性字段
+  form.text = example.prompt
   ElMessage.info('已填入示例内容')
 }
 
@@ -349,6 +384,13 @@ function getStatusText(status: string) {
   }
 }
 
+function formatFaceCount(value: number): string {
+  if (value >= 100000) {
+    return `${(value / 10000).toFixed(0)}万面`
+  }
+  return `${value.toLocaleString()}面`
+}
+
 function formatTime(date: Date): string {
   const now = new Date()
   const diff = now.getTime() - date.getTime()
@@ -394,6 +436,40 @@ function formatTime(date: Date): string {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.face-count-hint {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 14px;
+  color: #666;
+}
+
+.hint-icon {
+  color: #909399;
+  cursor: help;
+}
+
+.advanced-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.option-hints {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #666;
+}
+
+.option-hints p {
+  margin: 4px 0;
+  line-height: 1.4;
 }
 
 .progress-section {

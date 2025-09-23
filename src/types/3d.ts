@@ -33,8 +33,14 @@ export interface Upload3DRequest {
 }
 
 export interface TextTo3DRequest {
-  text: string
-  quality: 'low' | 'medium' | 'high'
+  prompt: string // 改为prompt以匹配API参数
+  polish: boolean // 是否抛光处理
+  enable_pbr: boolean // 是否启用PBR材质，默认false
+  face_count: number // 面数，范围40000-500000
+  generate_type: 'Normal' | 'LowPoly' | 'Geometry' | 'Sketch' // 生成类型
+  // 保留原有字段以兼容旧代码
+  text?: string
+  quality?: 'low' | 'medium' | 'high'
   style?: string
 }
 

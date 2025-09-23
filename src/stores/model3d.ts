@@ -100,11 +100,14 @@ export const useModel3DStore = defineStore('model3d', () => {
     generationMessage.value = '正在生成3D模型...'
 
     try {
+      // 使用新的prompt字段，如果没有则回退到text字段
+      const promptText = request.prompt || request.text || ''
+      
       // 检查缓存
-      const cached = model3DCache.checkTextCache(request.text)
+      const cached = model3DCache.checkTextCache(promptText)
       if (cached) {
         generationMessage.value = '从缓存中获取模型'
-        const model = createModelFromCache('text', request.text, cached.geometry, cached.material)
+        const model = createModelFromCache('text', promptText, cached.geometry, cached.material)
         addModel(model)
         setCurrentModel(model)
         return model
@@ -113,9 +116,9 @@ export const useModel3DStore = defineStore('model3d', () => {
       // 创建模型记录
       const model: Model3D = {
         id: `text_${Date.now()}`,
-        name: `文本生成: ${request.text.substring(0, 20)}...`,
+        name: `文本生成: ${promptText.substring(0, 20)}...`,
         type: 'text',
-        sourceContent: request.text,
+        sourceContent: promptText,
         createdAt: new Date(),
         status: 'generating',
         userId: authStore.currentUser?.id // 添加用户ID
@@ -138,8 +141,8 @@ export const useModel3DStore = defineStore('model3d', () => {
 
       if (response.success) {
         // 生成模拟几何体和材质
-        const geometry = generateMockGeometry('text', request.text)
-        const material = generateMockMaterial(request.text)
+        const geometry = generateMockGeometry('text', promptText)
+        const material = generateMockMaterial(promptText)
 
         // 更新模型
         model.geometry = geometry
@@ -147,7 +150,7 @@ export const useModel3DStore = defineStore('model3d', () => {
         model.status = 'completed'
         
         // 缓存结果
-        model3DCache.cacheTextResult(request.text, geometry, material)
+        model3DCache.cacheTextResult(promptText, geometry, material)
         
         generationProgress.value = 100
         generationMessage.value = '模型生成成功！'

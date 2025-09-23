@@ -33,7 +33,13 @@ class Model3DApi {
   async textTo3D(request: TextTo3DRequest): Promise<ApiResponse<Model3DGeneration>> {
     try {
       // 模拟API调用 - 实际部署时替换为真实API调用
-      console.log('发起文本转3D请求:', request)
+      console.log('发起文本转3D请求:', {
+        prompt: request.prompt || request.text,
+        polish: request.polish,
+        enable_pbr: request.enable_pbr,
+        face_count: request.face_count,
+        generate_type: request.generate_type
+      })
       
       // 模拟延迟
       await new Promise(resolve => setTimeout(resolve, MOCK_DELAY))
@@ -56,9 +62,11 @@ class Model3DApi {
       // 真实API调用代码（注释掉，部署时启用）
       /*
       const response = await this.client.post('/text-to-3d', {
-        prompt: request.text,
-        quality: request.quality,
-        style: request.style
+        prompt: request.prompt || request.text,
+        polish: request.polish,
+        enable_pbr: request.enable_pbr,
+        face_count: request.face_count,
+        generate_type: request.generate_type
       })
       
       return {
