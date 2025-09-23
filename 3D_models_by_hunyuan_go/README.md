@@ -3,12 +3,12 @@
   curl -X POST http://127.0.0.1:5000/api/submit-text \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt":"一个可爱的Q版猫咪手办，卡哇伊风格，由光滑的粘土/塑料制成，圆滚滚的身体，柔和的灯光，微距拍摄，景深效果，杰作，Artstation热门作品",
+    "prompt":"奔腾的骏马",
+    "polish": true,
     "enable_pbr": true,
     "face_count": 400000,
     "generate_type": "Normal"
   }'
-
 ```
 ##### 提交图生3D（URL）
 ```shell

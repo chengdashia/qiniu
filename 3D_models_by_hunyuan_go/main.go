@@ -21,10 +21,11 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	ai3d "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ai3d/v20250513"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	tcerr "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
-	ai3d "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ai3d/v20250513"
+	hunyuan "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/hunyuan/v20230901"
 )
 
 var (
@@ -148,6 +149,112 @@ func mustInitDB() {
    Tencent Cloud Client
    ========================= */
 
+func getHunyuanClient() (*hunyuan.Client, error) {
+	secretID := os.Getenv("TENCENTCLOUD_SECRET_ID")
+	secretKey := os.Getenv("TENCENTCLOUD_SECRET_KEY")
+	region := os.Getenv("TENCENTCLOUD_REGION")
+	if region == "" {
+		region = "ap-guangzhou"
+	}
+	if secretID == "" || secretKey == "" {
+		return nil, errors.New("missing TENCENTCLOUD_SECRET_ID or TENCENTCLOUD_SECRET_KEY")
+	}
+	cred := common.NewCredential(secretID, secretKey)
+	httpProf := profile.NewHttpProfile()
+	httpProf.Endpoint = "hunyuan.tencentcloudapi.com"
+	cliProf := profile.NewClientProfile()
+	cliProf.HttpProfile = httpProf
+	return hunyuan.NewClient(cred, region, cliProf)
+}
+
+// 使用混元大模型打磨提示词，提升生成质量
+// 环境变量可选：HUNYUAN_MODEL（默认给一个常用模型名）
+func polishPromptLLM(input string) (string, error) {
+	client, err := getHunyuanClient()
+	if err != nil {
+		return "", err
+	}
+
+	// 模型名可从环境变量覆盖，例如：hunyuan-pro / hunyuan-standard / hunyuan-lite 等
+	model := os.Getenv("HUNYUAN_MODEL")
+	//fmt.Println("Using LLM model:", model)
+	if model == "" {
+		model = "hunyuan-turbo"
+	}
+
+	req := hunyuan.NewChatCompletionsRequest()
+	req.Model = common.StringPtr(model)
+	// 可根据需要微调温度/TopP
+	req.Temperature = common.Float64Ptr(0.3)
+	req.TopP = common.Float64Ptr(0.9)
+
+	// 系统提示：只输出打磨后的 3D 提示词（中文，单行，<=512 字，无多余解释/引号）
+	systemPrompt := `你是3D模型生成提示词的润色助手。请将用户的想法改写为适合“文本/图生3D（混元到3D Pro）”的高质量中文提示词，要求：
+- 聚焦主体（物体/角色）、材质与表面特性（如 PBR、金属/塑料/陶瓷等）、风格与工艺（Q版、写实、粘土感等）、灯光与相机（打光环境、构图、镜头）、细节与复杂度（多边形/细节程度）、色彩与氛围。
+- 语言简洁有力，避免行话与赘述。
+- 输出仅一行、最多 512 字符、不要引号、不要任何解释或前后缀。`
+
+	// 构造消息
+	req.Messages = []*hunyuan.Message{
+		{Role: common.StringPtr("system"), Content: common.StringPtr(systemPrompt)},
+		{Role: common.StringPtr("user"), Content: common.StringPtr(input)},
+	}
+
+	// 非流式
+	stream := false
+	req.Stream = &stream
+
+	resp, err := client.ChatCompletions(req)
+	if err != nil {
+		return "", err
+	}
+	// 解析首条选择
+	if resp.Response == nil || len(resp.Response.Choices) == 0 ||
+		resp.Response.Choices[0].Message == nil || resp.Response.Choices[0].Message.Content == nil {
+		return "", errors.New("empty LLM response")
+	}
+	out := *resp.Response.Choices[0].Message.Content
+	// 简单裁剪到 512 字（防御；通常模型会遵守）
+	if len([]rune(out)) > 512 {
+		r := []rune(out)
+		out = string(r[:512])
+	}
+	// 单行输出
+	out = strings.TrimSpace(strings.ReplaceAll(out, "\n", " "))
+	return out, nil
+}
+
+type PolishReq struct {
+	Prompt string `json:"prompt"`
+}
+
+func handlePolishPrompt(c *gin.Context) {
+	var req PolishReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid json"})
+		return
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "prompt is required"})
+		return
+	}
+
+	refined, err := polishPromptLLM(req.Prompt)
+	if err != nil {
+		// 复用你的 SDK 错误处理
+		handleSDKError(c, err)
+		return
+	}
+
+	c.Set("refined", refined)
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":              true,
+		"polished_prompt": refined,
+	})
+}
+
+// 3D模型创建
 func getClient() (*ai3d.Client, error) {
 	secretID := os.Getenv("TENCENTCLOUD_SECRET_ID")
 	secretKey := os.Getenv("TENCENTCLOUD_SECRET_KEY")
@@ -171,9 +278,9 @@ func getClient() (*ai3d.Client, error) {
    ========================= */
 
 type ProCommonOpts struct {
-	EnablePBR    *bool  `json:"enable_pbr"`     // 默认为 false
-	FaceCount    *int64 `json:"face_count"`     // 40000-500000
-	GenerateType string `json:"generate_type"`  // Normal|LowPoly|Geometry|Sketch
+	EnablePBR    *bool  `json:"enable_pbr"`    // 默认为 false
+	FaceCount    *int64 `json:"face_count"`    // 40000-500000
+	GenerateType string `json:"generate_type"` // Normal|LowPoly|Geometry|Sketch
 }
 
 func buildProPayload(prompt, imageBase64, imageURL string, opts ProCommonOpts) (map[string]any, error) {
@@ -304,16 +411,18 @@ func queryHunyuan(jobID string) (*QueryProResult, error) {
 	return out, nil
 }
 
-
 /* =========================
    HTTP Handlers
    ========================= */
 
 type SubmitTextReq struct {
-	Prompt       string `json:"prompt"`                 // 必填（这个 text 接口）
-	EnablePBR    *bool  `json:"enable_pbr"`             // 可选
-	FaceCount    *int64 `json:"face_count"`             // 可选，生成3D模型的面数
-	GenerateType string `json:"generate_type"`          // 可选：Normal|LowPoly|Geometry|Sketch
+	Prompt       string `json:"prompt"`        // 原始提示词
+	EnablePBR    *bool  `json:"enable_pbr"`    // 可选
+	FaceCount    *int64 `json:"face_count"`    // 可选
+	GenerateType string `json:"generate_type"` // 可选：Normal|LowPoly|Geometry|Sketch
+
+	// 新增：是否先润色再提交
+	Polish bool `json:"polish"` // 默认 false；true 时会先调用混元生文润色
 }
 
 func handleSubmitText(c *gin.Context) {
@@ -322,13 +431,33 @@ func handleSubmitText(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid json"})
 		return
 	}
-	if strings.TrimSpace(req.Prompt) == "" {
+	raw := strings.TrimSpace(req.Prompt)
+	if raw == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "prompt is required"})
 		return
 	}
+
+	// 如果需要润色 -> 先走混元生文
+	usedPrompt := raw
+	if req.Polish {
+		refined, err := polishPromptLLM(raw) // 这里就是你上一步实现的函数
+		if err != nil {
+			// 你也可以选择“润色失败则降级用原文”，
+			// 这里只是给出清晰的错误返回，方便排查
+			handleSDKError(c, err)
+			return
+		}
+		usedPrompt = refined
+	}
+
+	// 按 Pro 规范构造 payload（只允许 Prompt）
 	payload, err := buildProPayload(
-		req.Prompt, "", "",
-		ProCommonOpts{EnablePBR: req.EnablePBR, FaceCount: req.FaceCount, GenerateType: req.GenerateType},
+		usedPrompt, "", "",
+		ProCommonOpts{
+			EnablePBR:    req.EnablePBR,
+			FaceCount:    req.FaceCount,
+			GenerateType: req.GenerateType,
+		},
 	)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
@@ -341,7 +470,14 @@ func handleSubmitText(c *gin.Context) {
 		return
 	}
 	_ = repo.Upsert(c.Request.Context(), jobID, "WAIT", nil, "")
-	c.JSON(http.StatusOK, gin.H{"ok": true, "job_id": jobID})
+
+	// 把最终使用的 prompt 回给前端，便于展示/复用
+	c.JSON(http.StatusOK, gin.H{
+		"ok":          true,
+		"job_id":      jobID,
+		"prompt_used": usedPrompt, // 如果 polish=true，这里就是 refined
+		"polished":    req.Polish,
+	})
 }
 
 func handleSubmitImage(c *gin.Context) {
@@ -442,16 +578,15 @@ func handleStatus(c *gin.Context) {
 
 	// 返回值对齐文档字段（并保留你已有的 files 映射）
 	c.JSON(http.StatusOK, gin.H{
-		"ok":           true,
-		"job_id":       jobID,
-		"status":       res.Status,        // WAIT/RUN/FAIL/DONE
-		"error_code":   res.ErrorCode,     // 可为空
-		"error_message":res.ErrorMessage,  // 可为空
-		"files":        res.Files,         // ResultFile3Ds
-		"request_id":   res.RequestId,     // 便于排障
+		"ok":            true,
+		"job_id":        jobID,
+		"status":        res.Status,       // WAIT/RUN/FAIL/DONE
+		"error_code":    res.ErrorCode,    // 可为空
+		"error_message": res.ErrorMessage, // 可为空
+		"files":         res.Files,        // ResultFile3Ds
+		"request_id":    res.RequestId,    // 便于排障
 	})
 }
-
 
 func handleDownload(c *gin.Context) {
 	jobID := c.Param("job_id")
@@ -516,7 +651,7 @@ var httpTransport = &http.Transport{
 	MaxIdleConns:        100,
 	MaxConnsPerHost:     100,
 	IdleConnTimeout:     90 * time.Second,
-	DisableCompression:  true,             // 避免中间代理压缩异常
+	DisableCompression:  true, // 避免中间代理压缩异常
 	TLSHandshakeTimeout: 20 * time.Second,
 }
 
@@ -714,6 +849,7 @@ func main() {
 	r.POST("/api/submit-image-url", handleSubmitImageURL)
 	r.GET("/api/status/:job_id", handleStatus)
 	r.GET("/api/download/:job_id/:idx", handleDownload)
+	r.POST("/api/polish-prompt", handlePolishPrompt)
 
 	addr := ":" + strconv.Itoa(appPort)
 	if p := os.Getenv("PORT"); p != "" {

@@ -10,6 +10,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ai3d v1.1.31
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.1.31
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/hunyuan v1.1.26
 )
 
 require (
