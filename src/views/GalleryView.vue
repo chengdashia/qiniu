@@ -170,7 +170,7 @@
                 </div>
               </div>
               
-              <div class="model-actions">
+              <div class="model-actions" @click.stop>
                 <el-button 
                   size="small" 
                   type="primary" 
@@ -179,8 +179,8 @@
                 >
                   查看详情
                 </el-button>
-                <el-dropdown @command="handleModelAction" trigger="click">
-                  <el-button size="small" type="info" plain>
+                <el-dropdown @command="handleModelAction" trigger="click" @click.stop>
+                  <el-button size="small" type="info" plain @click.stop>
                     更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
                   </el-button>
                   <template #dropdown>
@@ -236,26 +236,28 @@
               
               <el-table-column label="操作" width="200">
                 <template #default="{ row }">
-                  <el-button 
-                    size="small" 
-                    type="primary" 
-                    @click.stop="selectModel(row)"
-                  >
-                    查看详情
-                  </el-button>
-                  <el-dropdown @command="handleModelAction" trigger="click">
-                    <el-button size="small" type="info">
-                      更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                  <div @click.stop>
+                    <el-button 
+                      size="small" 
+                      type="primary" 
+                      @click.stop="selectModel(row)"
+                    >
+                      查看详情
                     </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item :command="`export:obj:${row.id}`">导出OBJ</el-dropdown-item>
-                        <el-dropdown-item :command="`export:stl:${row.id}`">导出STL</el-dropdown-item>
-                        <el-dropdown-item :command="`export:gltf:${row.id}`">导出GLTF</el-dropdown-item>
-                        <el-dropdown-item divided :command="`delete:${row.id}`">删除模型</el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
+                    <el-dropdown @command="handleModelAction" trigger="click" @click.stop>
+                      <el-button size="small" type="info" @click.stop>
+                        更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                      </el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item :command="`export:obj:${row.id}`">导出OBJ</el-dropdown-item>
+                          <el-dropdown-item :command="`export:stl:${row.id}`">导出STL</el-dropdown-item>
+                          <el-dropdown-item :command="`export:gltf:${row.id}`">导出GLTF</el-dropdown-item>
+                          <el-dropdown-item divided :command="`delete:${row.id}`">删除模型</el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                  </div>
                 </template>
               </el-table-column>
             </el-table>
