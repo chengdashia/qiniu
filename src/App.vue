@@ -50,7 +50,7 @@ const handleLogout = async () => {
           </el-menu-item>
           <el-menu-item index="/image-to-3d">
             <el-icon><Picture /></el-icon>
-            <span>图片色3D</span>
+            <span>图片转3D</span>
           </el-menu-item>
           <el-menu-item index="/upload-3d">
             <el-icon><Upload /></el-icon>
