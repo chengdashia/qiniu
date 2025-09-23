@@ -178,35 +178,73 @@
               
               <!-- 操作按钮 -->
               <div class="action-card" v-if="model.status === 'completed'">
-                <h3>操作</h3>
+                <h3>
+                  <el-icon><Setting /></el-icon>
+                  操作
+                </h3>
                 <div class="action-buttons">
-                  <el-button type="primary" @click="setAsCurrentModel">
-                    <el-icon><Star /></el-icon>
-                    设为当前模型
-                  </el-button>
-                  
-                  <el-dropdown @command="handleExportAction" trigger="click">
-                    <el-button type="success">
-                      导出模型<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                  <!-- 主要操作 -->
+                  <div class="primary-actions">
+                    <el-button 
+                      type="primary" 
+                      size="large"
+                      @click="setAsCurrentModel"
+                      class="action-btn primary-btn"
+                    >
+                      <el-icon><Star /></el-icon>
+                      设为当前模型
                     </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="obj">导出 OBJ 格式</el-dropdown-item>
-                        <el-dropdown-item command="stl">导出 STL 格式</el-dropdown-item>
-                        <el-dropdown-item command="gltf">导出 GLTF 格式</el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
+                    
+                    <el-dropdown @command="handleExportAction" trigger="click" class="export-dropdown">
+                      <el-button 
+                        type="success" 
+                        size="large"
+                        class="action-btn export-btn"
+                      >
+                        <el-icon><Download /></el-icon>
+                        导出模型<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                      </el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu class="export-menu">
+                          <el-dropdown-item command="obj">
+                            <el-icon><Document /></el-icon>
+                            导出 OBJ 格式
+                          </el-dropdown-item>
+                          <el-dropdown-item command="stl">
+                            <el-icon><Document /></el-icon>
+                            导出 STL 格式
+                          </el-dropdown-item>
+                          <el-dropdown-item command="gltf">
+                            <el-icon><Document /></el-icon>
+                            导出 GLTF 格式
+                          </el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                  </div>
                   
-                  <el-button type="warning" @click="handleEdit">
-                    <el-icon><Edit /></el-icon>
-                    编辑信息
-                  </el-button>
-                  
-                  <el-button type="danger" @click="handleDelete">
-                    <el-icon><Delete /></el-icon>
-                    删除模型
-                  </el-button>
+                  <!-- 辅助操作 -->
+                  <div class="secondary-actions">
+                    <el-button 
+                      type="warning" 
+                      size="large"
+                      @click="handleEdit"
+                      class="action-btn edit-btn"
+                    >
+                      <el-icon><Edit /></el-icon>
+                      编辑信息
+                    </el-button>
+                    
+                    <el-button 
+                      type="danger" 
+                      size="large"
+                      @click="handleDelete"
+                      class="action-btn delete-btn"
+                    >
+                      <el-icon><Delete /></el-icon>
+                      删除模型
+                    </el-button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -249,7 +287,9 @@ import {
   Document,
   ArrowDown,
   Edit,
-  Delete
+  Delete,
+  Setting,
+  Download
 } from '@element-plus/icons-vue'
 import { useModel3DStore } from '../stores/model3d'
 import ModelViewer from '../components/ModelViewer.vue'
@@ -631,10 +671,148 @@ async function handleDelete() {
   color: #666;
 }
 
+.action-card h3 {
+  margin: 0 0 20px 0;
+  color: #2c3e50;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-card h3 .el-icon {
+  color: #409eff;
+  font-size: 18px;
+}
+
 .action-buttons {
   display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.primary-actions,
+.secondary-actions {
+  display: flex;
+  gap: 16px;
   flex-wrap: wrap;
-  gap: 12px;
+}
+
+.primary-actions {
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.action-btn {
+  min-width: 140px;
+  height: 44px;
+  border-radius: 10px;
+  font-weight: 500;
+  font-size: 14px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.action-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.6s;
+}
+
+.action-btn:hover::before {
+  left: 100%;
+}
+
+.action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.action-btn:active {
+  transform: translateY(0);
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, #409eff 0%, #3182f6 100%);
+  color: white;
+}
+
+.primary-btn:hover {
+  background: linear-gradient(135deg, #3182f6 0%, #2563eb 100%);
+}
+
+.export-btn {
+  background: linear-gradient(135deg, #67c23a 0%, #4ade80 100%);
+  color: white;
+}
+
+.export-btn:hover {
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+}
+
+.edit-btn {
+  background: linear-gradient(135deg, #e6a23c 0%, #f59e0b 100%);
+  color: white;
+}
+
+.edit-btn:hover {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.delete-btn {
+  background: linear-gradient(135deg, #f56c6c 0%, #ef4444 100%);
+  color: white;
+}
+
+.delete-btn:hover {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+.export-dropdown {
+  display: inline-block;
+}
+
+/* 下拉菜单样式优化 */
+:deep(.export-menu) {
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e5e7eb;
+  padding: 8px;
+  backdrop-filter: blur(10px);
+}
+
+:deep(.export-menu .el-dropdown-menu__item) {
+  border-radius: 8px;
+  margin: 2px 0;
+  padding: 12px 16px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+}
+
+:deep(.export-menu .el-dropdown-menu__item:hover) {
+  background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%);
+  color: #409eff;
+  transform: translateX(4px);
+}
+
+:deep(.export-menu .el-dropdown-menu__item .el-icon) {
+  color: #6b7280;
+  font-size: 16px;
+}
+
+:deep(.export-menu .el-dropdown-menu__item:hover .el-icon) {
+  color: #409eff;
 }
 
 @media (max-width: 1024px) {
@@ -652,12 +830,15 @@ async function handleDelete() {
     gap: 16px;
   }
   
-  .action-buttons {
+  .primary-actions,
+  .secondary-actions {
     flex-direction: column;
+    width: 100%;
   }
   
-  .action-buttons .el-button {
-    justify-content: flex-start;
+  .action-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 
@@ -673,6 +854,20 @@ async function handleDelete() {
   .file-info {
     flex-direction: column;
     text-align: center;
+  }
+  
+  .action-btn {
+    min-width: unset;
+    height: 40px;
+    font-size: 13px;
+  }
+  
+  .action-buttons {
+    gap: 16px;
+  }
+  
+  .primary-actions {
+    padding-bottom: 12px;
   }
 }
 </style>

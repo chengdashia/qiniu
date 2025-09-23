@@ -15,6 +15,8 @@ export class ThreeViewer {
   private controls!: OrbitControls
   private currentModel: THREE.Object3D | null = null
   private config: ViewerConfig
+  private isWireframe: boolean = false
+  private originalMaterials: Map<THREE.Mesh, THREE.Material | THREE.Material[]> = new Map()
 
   constructor(container: HTMLElement, config: Partial<ViewerConfig> = {}) {
     this.container = container
@@ -128,6 +130,10 @@ export class ThreeViewer {
     if (this.currentModel) {
       this.scene.remove(this.currentModel)
     }
+    
+    // 重置线框模式状态
+    this.isWireframe = false
+    this.originalMaterials.clear()
 
     // 创建材质（如果未提供）
     if (!material) {
@@ -239,6 +245,50 @@ export class ThreeViewer {
     })
   }
 
+  // 切换线框模式
+  public toggleWireframe(): boolean {
+    if (!this.currentModel) {
+      throw new Error('没有可切换线框模式的模型')
+    }
+
+    this.isWireframe = !this.isWireframe
+
+    this.currentModel.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        if (this.isWireframe) {
+          // 保存原始材质
+          this.originalMaterials.set(child, child.material)
+          
+          // 应用线框材质
+          if (Array.isArray(child.material)) {
+            child.material = child.material.map(mat => {
+              const wireframeMat = mat.clone()
+              wireframeMat.wireframe = true
+              return wireframeMat
+            })
+          } else {
+            const wireframeMat = child.material.clone()
+            wireframeMat.wireframe = true
+            child.material = wireframeMat
+          }
+        } else {
+          // 恢复原始材质
+          const originalMaterial = this.originalMaterials.get(child)
+          if (originalMaterial) {
+            child.material = originalMaterial
+            this.originalMaterials.delete(child)
+          }
+        }
+      }
+    })
+
+    return this.isWireframe
+  }
+
+  // 获取当前线框模式状态
+  public getWireframeMode(): boolean {
+    return this.isWireframe
+  }
   // 更新配置
   public updateConfig(newConfig: Partial<ViewerConfig>) {
     this.config = { ...this.config, ...newConfig }

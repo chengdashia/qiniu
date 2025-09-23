@@ -28,65 +28,99 @@
     
     <!-- 控制栏 -->
     <div v-if="model && !loading" class="controls">
-      <div class="control-group">
-        <el-button-group>
+      <!-- 主要操作按钮 -->
+      <div class="main-controls">
+        <div class="button-group">
           <el-button 
-            :type="config.enableAnimation ? 'primary' : ''"
+            :type="config.enableAnimation ? 'primary' : 'default'"
             @click="toggleAnimation"
             size="small"
+            class="control-button"
           >
             <el-icon><VideoPlay /></el-icon>
             {{ config.enableAnimation ? '停止旋转' : '自动旋转' }}
           </el-button>
           
-          <el-button @click="resetCamera" size="small">
+          <el-button 
+            @click="resetCamera" 
+            size="small"
+            class="control-button"
+          >
             <el-icon><Refresh /></el-icon>
             重置视角
           </el-button>
           
-          <el-button @click="toggleWireframe" size="small">
+          <el-button 
+            :type="wireframeMode ? 'warning' : 'default'"
+            @click="toggleWireframe" 
+            size="small"
+            class="control-button"
+          >
             <el-icon><Grid /></el-icon>
             线框模式
           </el-button>
-        </el-button-group>
+          
+          <el-dropdown @command="handleExport" trigger="click">
+            <el-button 
+              type="primary" 
+              size="small"
+              class="control-button export-button"
+            >
+              导出模型<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="obj">
+                  <el-icon><Document /></el-icon>
+                  OBJ 格式
+                </el-dropdown-item>
+                <el-dropdown-item command="stl">
+                  <el-icon><Document /></el-icon>
+                  STL 格式
+                </el-dropdown-item>
+                <el-dropdown-item command="gltf">
+                  <el-icon><Document /></el-icon>
+                  GLTF 格式
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
       
-      <div class="control-group">
-        <span>背景色：</span>
-        <el-color-picker 
-          v-model="config.backgroundColor" 
-          @change="updateBackgroundColor"
-          size="small"
-        />
-      </div>
-      
-      <div class="control-group">
-        <span>光照强度：</span>
-        <el-slider 
-          v-model="config.lightIntensity"
-          :min="0"
-          :max="2"
-          :step="0.1"
-          @change="updateLightIntensity"
-          style="width: 100px;"
-          size="small"
-        />
-      </div>
-      
-      <!-- 导出按钮 -->
-      <div class="control-group">
-        <el-dropdown @command="handleExport" trigger="click">
-          <el-button type="primary" size="small">
-            导出模型<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="obj">OBJ 格式</el-dropdown-item>
-              <el-dropdown-item command="stl">STL 格式</el-dropdown-item>
-              <el-dropdown-item command="gltf">GLTF 格式</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+      <!-- 参数调节控制 -->
+      <div class="param-controls">
+        <div class="param-group">
+          <label class="param-label">
+            <el-icon><Sunny /></el-icon>
+            背景色
+          </label>
+          <el-color-picker 
+            v-model="config.backgroundColor" 
+            @change="updateBackgroundColor"
+            size="small"
+            class="color-picker"
+          />
+        </div>
+        
+        <div class="param-group light-control">
+          <label class="param-label">
+            <el-icon><Sunny /></el-icon>
+            光照强度
+          </label>
+          <div class="slider-container">
+            <el-slider 
+              v-model="config.lightIntensity"
+              :min="0"
+              :max="2"
+              :step="0.1"
+              @change="updateLightIntensity"
+              class="light-slider"
+              size="small"
+            />
+            <span class="slider-value">{{ config.lightIntensity.toFixed(1) }}</span>
+          </div>
+        </div>
       </div>
     </div>
     
@@ -117,7 +151,9 @@ import {
   Refresh, 
   Grid, 
   ArrowDown,
-  WarningFilled
+  WarningFilled,
+  Document,
+  Sunny
 } from '@element-plus/icons-vue'
 import { ThreeViewer } from '../utils/threeViewer'
 import { useModel3DStore } from '../stores/model3d'
@@ -212,6 +248,9 @@ function loadModel(model: Model3D) {
   try {
     viewer.value.loadModel(model.geometry, model.material)
     
+    // 重置线框模式状态
+    wireframeMode.value = false
+    
     setTimeout(() => {
       loading.value = false
     }, 500)
@@ -248,9 +287,18 @@ function resetCamera() {
 }
 
 function toggleWireframe() {
-  wireframeMode.value = !wireframeMode.value
-  // 这里可以添加线框模式的实现
-  ElMessage.info(wireframeMode.value ? '已启用线框模式' : '已关闭线框模式')
+  if (viewer.value) {
+    try {
+      const newWireframeState = viewer.value.toggleWireframe()
+      wireframeMode.value = newWireframeState
+      ElMessage.info(wireframeMode.value ? '已启用线框模式' : '已关闭线框模式')
+    } catch (error) {
+      console.error('切换线框模式失败:', error)
+      ElMessage.error('线框模式切换失败')
+    }
+  } else {
+    ElMessage.warning('查看器未初始化')
+  }
 }
 
 function updateBackgroundColor() {
@@ -375,19 +423,162 @@ function formatDate(date: Date): string {
 
 .controls {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 16px;
-  padding: 12px 16px;
-  background: #fafafa;
-  border-top: 1px solid #e0e0e0;
-  flex-wrap: wrap;
+  padding: 20px;
+  background: linear-gradient(135deg, #fafbfc 0%, #f3f4f6 100%);
+  border-top: 1px solid #e0e6ed;
+  position: relative;
 }
 
-.control-group {
+.controls::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #409eff, transparent);
+}
+
+.main-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+}
+
+.button-group {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.control-button {
+  min-width: 100px;
+  height: 36px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border: 1px solid #d1d5db;
+}
+
+.control-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+}
+
+.control-button.export-button {
+  background: linear-gradient(135deg, #409eff 0%, #3182f6 100%);
+  border: none;
+  color: white;
+  font-weight: 600;
+}
+
+.control-button.export-button:hover {
+  background: linear-gradient(135deg, #3182f6 0%, #2563eb 100%);
+}
+
+.param-controls {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  justify-content: center;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.param-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  padding: 12px 16px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e5e7eb;
+  transition: all 0.3s ease;
+}
+
+.param-group:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: #409eff;
+}
+
+.param-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.param-label .el-icon {
+  color: #409eff;
+  font-size: 16px;
+}
+
+.color-picker {
+  border-radius: 6px;
+}
+
+.light-control {
+  min-width: 200px;
+}
+
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 140px;
+}
+
+.light-slider {
+  flex: 1;
+}
+
+.slider-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: #409eff;
+  background: #f0f8ff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  min-width: 32px;
+  text-align: center;
+}
+
+/* 下拉菜单样式优化 */
+:deep(.el-dropdown-menu) {
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  border: 1px solid #e5e7eb;
+  padding: 4px;
+}
+
+:deep(.el-dropdown-menu__item) {
+  border-radius: 6px;
+  margin: 2px 0;
+  padding: 8px 12px;
+  transition: all 0.2s ease;
+}
+
+:deep(.el-dropdown-menu__item:hover) {
+  background: #f0f8ff;
+  color: #409eff;
+}
+
+:deep(.el-dropdown-menu__item .el-icon) {
+  margin-right: 8px;
+  color: #6b7280;
+}
+
+:deep(.el-dropdown-menu__item:hover .el-icon) {
+  color: #409eff;
 }
 
 .model-info {
@@ -397,13 +588,55 @@ function formatDate(date: Date): string {
 
 @media (max-width: 768px) {
   .controls {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
+    padding: 16px;
   }
   
-  .control-group {
+  .button-group {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+  
+  .control-button {
+    width: 100%;
+    min-width: unset;
+  }
+  
+  .param-controls {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .param-group {
     justify-content: space-between;
+  }
+  
+  .light-control {
+    min-width: unset;
+  }
+  
+  .slider-container {
+    min-width: unset;
+    flex: 1;
+  }
+}
+
+@media (max-width: 480px) {
+  .controls {
+    padding: 12px;
+  }
+  
+  .param-controls {
+    padding-top: 12px;
+  }
+  
+  .param-group {
+    padding: 10px 12px;
+  }
+  
+  .param-label {
+    font-size: 13px;
   }
 }
 </style>
