@@ -294,9 +294,9 @@
               <el-icon><Picture /></el-icon>
               图片转3D
             </el-button>
-            <el-button type="info" @click="model3dStore.initSampleModels()">
+            <el-button type="info" @click="refreshSampleModels()">
               <el-icon><Collection /></el-icon>
-              加载示例模型
+              刷新示例模型
             </el-button>
           </div>
         </div>
@@ -331,8 +331,8 @@ import type { Model3D, ExportFormat } from '../types/3d'
 const model3dStore = useModel3DStore()
 const router = useRouter()
 
-// 初始化示例模型
-model3dStore.initSampleModels()
+// 移除这里的初始化调用，因为已经在main.ts中全局初始化了
+// model3dStore.initSampleModels()
 
 // 状态
 const searchKeyword = ref('')
@@ -343,8 +343,8 @@ const viewMode = ref<'grid' | 'list'>('grid')
 const currentPage = ref(1)
 const pageSize = ref(12)
 
-// 计算属性
-const models = computed(() => model3dStore.models)
+// 计算属性 - 使用公共模型
+const models = computed(() => model3dStore.publicModels) // 使用公共模型而不是所有模型
 const currentModel = computed(() => model3dStore.currentModel)
 const completedModels = computed(() => model3dStore.completedModels)
 const textModels = computed(() => models.value.filter(m => m.type === 'text'))
@@ -489,6 +489,11 @@ async function clearAllModels() {
 
 function handlePageChange(page: number) {
   currentPage.value = page
+}
+
+function refreshSampleModels() {
+  model3dStore.initSampleModels()
+  ElMessage.success('示例模型已刷新')
 }
 
 function getSourcePreview(model: Model3D): string {

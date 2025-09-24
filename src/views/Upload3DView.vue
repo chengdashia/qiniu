@@ -185,21 +185,21 @@ const viewerConfig: ViewerConfig = {
 
 // 计算属性
 const recentModels = computed(() => {
-  return model3dStore.models
+  return model3dStore.publicModels
     .filter(model => model.type === 'upload')
     .slice(0, 6) // 显示最近6个
 })
 
 const totalUploaded = computed(() => 
-  model3dStore.models.filter(model => model.type === 'upload').length
+  model3dStore.publicModels.filter(model => model.type === 'upload').length
 )
 
 const successfulUploads = computed(() => 
-  model3dStore.models.filter(model => model.type === 'upload' && model.status === 'completed').length
+  model3dStore.publicModels.filter(model => model.type === 'upload' && model.status === 'completed').length
 )
 
 const totalFileSize = computed(() => {
-  const totalBytes = model3dStore.models
+  const totalBytes = model3dStore.publicModels
     .filter(model => model.type === 'upload' && model.fileInfo)
     .reduce((sum, model) => sum + (model.fileInfo?.size || 0), 0)
   return (totalBytes / (1024 * 1024)).toFixed(2)

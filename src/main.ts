@@ -4,6 +4,7 @@ import router from './router'
 import App from './App.vue'
 import 'element-plus/dist/index.css'
 import { useAuthStore } from './stores/auth'
+import { useModel3DStore } from './stores/model3d'
 
 async function initApp() {
   const app = createApp(App)
@@ -15,6 +16,10 @@ async function initApp() {
   // 初始化认证状态 - 等待完成
   const authStore = useAuthStore()
   await authStore.initAuth()
+  
+  // 初始化模型数据 - 确保示例模型在应用启动时就可用
+  const model3DStore = useModel3DStore()
+  model3DStore.initSampleModels()
   
   // 添加全局调试方法
   if (typeof window !== 'undefined') {

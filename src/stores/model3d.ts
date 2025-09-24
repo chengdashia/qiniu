@@ -20,23 +20,25 @@ export const useModel3DStore = defineStore('model3d', () => {
   // 初始化时添加一些示例模型
   function initSampleModels() {
     if (models.value.length === 0) {
-      const sampleTexts = [
-        '一个立方体机器人',
-        '蓝色的球形物体',
-        '红色的圆环形状',
-        '绿色的圆锥体建筑',
-        '紫色的多面体水晶'
+      const sampleData = [
+        { text: '一个立方体机器人', type: 'text' as const },
+        { text: '蓝色的球形物体', type: 'text' as const },
+        { text: '红色的圆环形状', type: 'text' as const },
+        { text: '绿色的圆锥体建筑', type: 'text' as const },
+        { text: '紫色的多面体水晶', type: 'text' as const },
+        { text: '可爱的小狗模型', type: 'image' as const },
+        { text: '现代家具设计', type: 'image' as const }
       ]
       
-      sampleTexts.forEach((text, index) => {
-        const geometry = generateMockGeometry('text', text)
-        const material = generateMockMaterial(text)
+      sampleData.forEach((data, index) => {
+        const geometry = generateMockGeometry(data.type, data.text)
+        const material = generateMockMaterial(data.text)
         
         const sampleModel: Model3D = {
-          id: `sample_${index}`,
-          name: text,
-          type: 'text',
-          sourceContent: text,
+          id: `sample_${data.type}_${index}`,
+          name: data.text,
+          type: data.type,
+          sourceContent: data.text,
           geometry,
           material,
           createdAt: new Date(Date.now() - index * 60000), // 错开时间
@@ -52,6 +54,8 @@ export const useModel3DStore = defineStore('model3d', () => {
       if (firstModel) {
         setCurrentModel(firstModel)
       }
+      
+      console.log('🎨 示例模型已初始化:', models.value.length, '个模型')
     }
   }
 
@@ -66,6 +70,14 @@ export const useModel3DStore = defineStore('model3d', () => {
 
   const generatingModels = computed(() => 
     models.value.filter(model => model.status === 'generating')
+  )
+  
+  // 公共模型（示例模型 + 已完成的所有模型）
+  const publicModels = computed(() => 
+    models.value.filter(model => 
+      model.status === 'completed' && 
+      (model.userId === 'demo_samples' || model.userId) // 示例模型和所有用户的模型都可公开展示
+    )
   )
   
   // 当前用户的模型
@@ -441,6 +453,7 @@ export const useModel3DStore = defineStore('model3d', () => {
     completedModels,
     failedModels,
     generatingModels,
+    publicModels, // 公共模型（包括示例模型）
     userModels,
     userCompletedModels,
     
