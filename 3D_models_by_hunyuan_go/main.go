@@ -3,12 +3,13 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,13 +19,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"golang.org/x/crypto/bcrypt"
 
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	//_ "github.com/lib/pq"
+
+	"github.com/jinzhu/gorm"
 	ai3d "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/ai3d/v20250513"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	tcerr "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
+
+	_ "github.com/jinzhu/gorm/dialects/postgres"
 	hunyuan "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/hunyuan/v20230901"
 )
 
@@ -32,8 +41,8 @@ var (
 	appPort     = 5000
 	downloadDir = "downloads"
 
-	// DB
-	db   *sql.DB
+	// 设置数据库连接
+	db   *gorm.DB
 	repo JobRepo
 )
 
@@ -45,6 +54,13 @@ type ResultFile struct {
 	Type            string `json:"Type"`
 	Url             string `json:"Url"`
 	PreviewImageUrl string `json:"PreviewImageUrl,omitempty"`
+}
+
+// 用户表
+type User struct {
+	ID       uint   `gorm:"primary_key"`
+	Username string `gorm:"unique;not null"`
+	Password string `gorm:"not null"`
 }
 
 type JobMeta struct {
@@ -62,42 +78,43 @@ type JobRepo interface {
 }
 
 /* =========================
-   PostgreSQL Repo
+   GORM Repo
    ========================= */
 
-type pgJobRepo struct{ db *sql.DB }
+type gormJobRepo struct{ db *gorm.DB }
 
-func NewPGJobRepo(db *sql.DB) JobRepo { return &pgJobRepo{db: db} }
+func NewGormJobRepo(db *gorm.DB) JobRepo { return &gormJobRepo{db: db} }
 
-func (r *pgJobRepo) Upsert(ctx context.Context, jobID, status string, files []ResultFile, errStr string) error {
-	b, _ := json.Marshal(files)
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO jobs (job_id, status, files, error)
-		VALUES ($1, $2, $3::jsonb, NULLIF($4,''))
-		ON CONFLICT (job_id) DO UPDATE
-		SET status = EXCLUDED.status,
-		    files  = EXCLUDED.files,
-		    error  = EXCLUDED.error,
-		    updated_at = now()
-	`, jobID, status, string(b), errStr)
-	return err
+func createTable(db *gorm.DB) error {
+	// GORM 会自动处理表的迁移
+	db.AutoMigrate(&User{})
+	result := db.AutoMigrate(&JobMeta{})
+	return result.Error
 }
 
-func (r *pgJobRepo) Get(ctx context.Context, jobID string) (*JobMeta, error) {
+func (r *gormJobRepo) Upsert(ctx context.Context, jobID, status string, files []ResultFile, errStr string) error {
+	// 插入或更新操作
+	jobMeta := JobMeta{
+		JobID:  jobID,
+		Status: status,
+		Files:  files,
+		Error:  errStr,
+	}
+
+	// GORM 提供了 `Save` 方法，支持插入或更新数据
+	// 注意：`Save` 方法根据主键进行判断，如果记录存在则更新，如果不存在则插入
+	return r.db.Save(&jobMeta).Error
+}
+
+func (r *gormJobRepo) Get(ctx context.Context, jobID string) (*JobMeta, error) {
 	var jm JobMeta
-	var filesJSON []byte
-	err := r.db.QueryRowContext(ctx, `
-		SELECT job_id, status, files, COALESCE(error,''), created_at, updated_at
-		FROM jobs WHERE job_id = $1
-	`, jobID).Scan(&jm.JobID, &jm.Status, &filesJSON, &jm.Error, &jm.CreatedAt, &jm.UpdatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
+	// GORM 提供了 `First` 方法来查找指定条件的第一条记录
+	err := r.db.Where("job_id = ?", jobID).First(&jm).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
-	}
-	if len(filesJSON) > 0 {
-		_ = json.Unmarshal(filesJSON, &jm.Files)
 	}
 	return &jm, nil
 }
@@ -106,7 +123,7 @@ func (r *pgJobRepo) Get(ctx context.Context, jobID string) (*JobMeta, error) {
    Env / DB Init
    ========================= */
 
-func mustInit() {
+func mustInit(dsn string) {
 	_ = godotenv.Load()
 
 	if p := os.Getenv("PORT"); p != "" {
@@ -117,30 +134,42 @@ func mustInit() {
 	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
 		panic(err)
 	}
-	mustInitDB()
-	repo = NewPGJobRepo(db)
+	mustInitDB(dsn)
+
+	// 创建表格（如果不存在的话）
+	err := createTable(db)
+	if err != nil {
+		log.Fatal("Error creating table:", err)
+	}
+	fmt.Println("Table created (if not already exists) successfully.")
+
+	repo = NewGormJobRepo(db)
 }
 
-func mustInitDB() {
-	dsn := os.Getenv("DATABASE_URL") // e.g. postgres://user:pass@host:5432/db?sslmode=disable
+// 初始化数据库
+func mustInitDB(dsn string) {
+	//dsn := os.Getenv("DATABASE_URL") // e.g. postgres://user:pass@host:5432/db?sslmode=disable
 
-	fmt.Println(dsn)
+	//fmt.Println(dsn)
 
 	if dsn == "" {
 		panic("DATABASE_URL is required")
 	}
 	var err error
-	db, err = sql.Open("pgx", dsn)
+	db, err = gorm.Open("postgres", dsn)
 	if err != nil {
 		panic(err)
 	}
-	db.SetMaxOpenConns(20)
-	db.SetMaxIdleConns(10)
-	db.SetConnMaxLifetime(30 * time.Minute)
 
+	// 设置连接池
+	db.DB().SetMaxOpenConns(20)
+	db.DB().SetMaxIdleConns(10)
+	db.DB().SetConnMaxLifetime(30 * time.Minute)
+
+	// 测试数据库连接
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := db.PingContext(ctx); err != nil {
+	if err := db.DB().PingContext(ctx); err != nil {
 		panic(err)
 	}
 }
@@ -562,6 +591,7 @@ func handleSubmitImageURL(c *gin.Context) {
 
 func handleStatus(c *gin.Context) {
 	jobID := c.Param("job_id")
+	fmt.Println("Received job_id:", jobID) // 打印 job_id
 
 	res, err := queryHunyuan(jobID)
 	if err != nil {
@@ -833,27 +863,158 @@ func strVal(p *string) string {
 	return *p
 }
 
+// 用户登录
+func hashPassword(password string) (string, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hashedPassword), nil
+}
+
+// 验证密码
+func checkPassword(hashedPassword, password string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+	return err == nil
+}
+
+// 注册路由
+func handelRegister(c *gin.Context) {
+	username := c.PostForm("username")
+	password := c.PostForm("password")
+
+	// 检查用户名是否已存在
+	var user User
+	if err := db.Where("username = ?", username).First(&user).Error; err == nil {
+		c.JSON(http.StatusConflict, gin.H{"message": "Username already taken"})
+		return
+	}
+
+	// 加密密码
+	hashedPassword, err := hashPassword(password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Error encrypting password"})
+		return
+	}
+
+	// 创建新用户
+	newUser := User{Username: username, Password: hashedPassword}
+	if err := db.Create(&newUser).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Error registering user"})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "Registration successful"})
+}
+
+// 登录路由
+func handelLogin(c *gin.Context) {
+	username := c.PostForm("username")
+	password := c.PostForm("password")
+
+	// 查询数据库中的用户
+	var user User
+	if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid username or password"})
+		return
+	}
+
+	// 校验密码
+	if !checkPassword(user.Password, password) {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid username or password"})
+		return
+	}
+
+	// 登录成功，设置 session
+	session := sessions.Default(c)
+	session.Set("user", user.Username)
+
+	// 设置会话过期时间为 10 分钟
+	session.Options(sessions.Options{
+		MaxAge: 10 * 60,
+	})
+
+	session.Save()
+
+	c.JSON(200, gin.H{"message": "Logged in successfully"})
+}
+
+func authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		session := sessions.Default(c)
+		user := session.Get("user")
+
+		if user == nil {
+			// 如果没有会话信息，则返回 401 Unauthorized
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "Unauthorized"})
+			c.Abort() // 终止后续的处理
+			return
+		}
+
+		// 会话验证通过，继续处理
+		c.Next()
+	}
+}
+
 /* =========================
    main
    ========================= */
 
 func main() {
-	mustInit()
+
+	//// 定义命令行参数
+	//secretID := flag.String("secret-id", "", "Tencent Cloud Secret ID")
+	//secretKey := flag.String("secret-key", "", "Tencent Cloud Secret Key")
+	//region := flag.String("region", "", "Tencent Cloud Region")
+	//port := flag.String("port", "5000", "Server Port")
+	//databaseURL := flag.String("database-url", "", "Pgsql Database Connection URL")
+	//hunyuanModel := flag.String("hunyuan-model", "hunyuan-t1-latest", "Hunyuan Model")
+
+	dsn := flag.String("database-url", "postgres://whang_3d:wh134151@127.0.0.1:5432/postgres?sslmode=disable", "Pgsql Database Connection URL")
+
+	flag.Parse()
+
+	mustInit(*dsn)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
 	r.GET("/", handleHealth)
-	r.POST("/api/submit-text", handleSubmitText)
-	r.POST("/api/submit-image", handleSubmitImage)
-	r.POST("/api/submit-image-url", handleSubmitImageURL)
-	r.GET("/api/status/:job_id", handleStatus)
-	r.GET("/api/download/:job_id/:idx", handleDownload)
-	r.POST("/api/polish-prompt", handlePolishPrompt)
+
+	// 使用 cookie 存储会话
+	store := cookie.NewStore([]byte("secret"))
+	r.Use(sessions.Sessions("mysession", store)) //
+	//// 设置会话过期时间为 10 分钟
+	//store.Options(sessions.Options{
+	//	MaxAge: 10 * 60, // 10 minutes
+	//})
+
+	// **不使用中间件**的路由
+	r.POST("/register", handelRegister)
+	r.POST("/login", handelLogin)
+
+	// **需要会话验证中间件**的路由
+	authorized := r.Group("/api")
+	authorized.Use(authMiddleware()) // 只对该路由组中的路由进行会话验证
+
+	//路由错误
+	//authorized.POST("/api/submit-text", handleSubmitText)
+	authorized.POST("/submit-text", handleSubmitText)
+	authorized.POST("/submit-image", handleSubmitImage)
+	authorized.POST("/submit-image-url", handleSubmitImageURL)
+	authorized.GET("/status/:job_id", handleStatus)
+	authorized.GET("/download/:job_id/:idx", handleDownload)
+	authorized.POST("/polish-prompt", handlePolishPrompt)
 
 	addr := ":" + strconv.Itoa(appPort)
 	if p := os.Getenv("PORT"); p != "" {
 		addr = ":" + p
 	}
-	_ = r.Run(addr)
+
+	fmt.Println("Starting server on", addr)
+
+	err := r.Run(addr)
+	if err != nil {
+		log.Fatal("Server run error:", err)
+	}
 }
