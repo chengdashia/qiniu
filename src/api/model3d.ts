@@ -32,8 +32,7 @@ class Model3DApi {
    */
   async textTo3D(request: TextTo3DRequest): Promise<ApiResponse<Model3DGeneration>> {
     try {
-      // 模拟API调用 - 实际部署时替换为真实API调用
-      console.log('发起文本轴3D请求:', {
+      console.log('发起文本转3D请求:', {
         prompt: request.prompt || request.text,
         polish: request.polish, // 提示词优化
         enable_pbr: request.enable_pbr,
@@ -41,27 +40,8 @@ class Model3DApi {
         generate_type: request.generate_type
       })
       
-      // 模拟延迟
-      await new Promise(resolve => setTimeout(resolve, MOCK_DELAY))
-      
-      // 模拟成功响应
-      const mockResponse: ApiResponse<Model3DGeneration> = {
-        success: true,
-        data: {
-          id: `text_${Date.now()}`,
-          progress: 100,
-          estimatedTime: 30,
-          modelUrl: 'mock://generated-model.gltf',
-          textureUrl: 'mock://generated-texture.png'
-        },
-        message: '模型生成成功'
-      }
-
-      return mockResponse
-
-      // 真实API调用代码（注释掉，部署时启用）
-      /*
-      const response = await this.client.post('/text-to-3d', {
+      // 调用本地后端API
+      const response = await this.client.post('/api/submit-text', {
         prompt: request.prompt || request.text,
         polish: request.polish,
         enable_pbr: request.enable_pbr,
@@ -69,16 +49,50 @@ class Model3DApi {
         generate_type: request.generate_type
       })
       
-      return {
-        success: true,
-        data: response.data
+      if (response.data.ok) {
+        return {
+          success: true,
+          data: {
+            id: response.data.job_id,
+            progress: 0,
+            estimatedTime: 30
+          },
+          message: '任务提交成功'
+        }
+      } else {
+        throw new Error(response.data.error || '提交失败')
       }
-      */
     } catch (error) {
       console.error('文本转3D API错误:', error)
       return {
         success: false,
         error: '文本转3D生成失败',
+        message: error instanceof Error ? error.message : '未知错误'
+      }
+    }
+  }
+
+  /**
+   * 查询任务状态
+   */
+  async queryJobStatus(jobId: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.client.get(`/api/status/${jobId}`)
+      
+      if (response.data.ok) {
+        return {
+          success: true,
+          data: response.data,
+          message: '查询成功'
+        }
+      } else {
+        throw new Error(response.data.error || '查询失败')
+      }
+    } catch (error) {
+      console.error('查询任务状态错误:', error)
+      return {
+        success: false,
+        error: '查询任务状态失败',
         message: error instanceof Error ? error.message : '未知错误'
       }
     }

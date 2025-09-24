@@ -191,30 +191,71 @@ export const useModel3DStore = defineStore('model3d', () => {
         }
       }, 200)
 
-      // 调用API（目前使用模拟数据）
+      // 调用API提交任务
       const response = await model3DApi.textTo3D(request)
-      clearInterval(progressInterval)
 
-      if (response.success) {
-        // 生成模拟几何体和材质
-        const geometry = generateMockGeometry('text', promptText)
-        const material = generateMockMaterial(promptText)
-
-        // 更新模型
-        model.geometry = geometry
-        model.material = material
-        model.status = 'completed'
+      if (response.success && response.data?.id) {
+        // 任务提交成功，开始轮询状态
+        const jobId = response.data.id
+        generationMessage.value = '任务已提交，正在生成中...'
         
-        // 缓存结果
-        model3DCache.cacheTextResult(promptText, geometry, material)
+        // 轮询任务状态
+        const pollStatus = async () => {
+          try {
+            const statusResponse = await model3DApi.queryJobStatus(jobId)
+            if (statusResponse.success && statusResponse.data) {
+              const { status, files, error } = statusResponse.data
+              
+              switch (status) {
+                case 'WAIT':
+                  generationMessage.value = '任务排队中...'
+                  break
+                case 'RUN':
+                  generationMessage.value = '正在生成中...'
+                  generationProgress.value = Math.min(generationProgress.value + 5, 85)
+                  break
+                case 'DONE':
+                  clearInterval(progressInterval)
+                  // 生成成功，处理结果
+                  const geometry = generateMockGeometry('text', promptText)
+                  const material = generateMockMaterial(promptText)
+                  
+                  model.geometry = geometry
+                  model.material = material
+                  model.status = 'completed'
+                  
+                  model3DCache.cacheTextResult(promptText, geometry, material)
+                  
+                  generationProgress.value = 100
+                  generationMessage.value = '模型生成成功！'
+                  return model
+                  
+                case 'FAIL':
+                  clearInterval(progressInterval)
+                  model.status = 'failed'
+                  generationMessage.value = error || '生成失败'
+                  return null
+              }
+              
+              // 继续轮询
+              if (status === 'WAIT' || status === 'RUN') {
+                setTimeout(pollStatus, 3000) // 3秒后再次查询
+              }
+            }
+          } catch (error) {
+            console.error('查询任务状态失败:', error)
+            setTimeout(pollStatus, 5000) // 出错时5秒后重试
+          }
+        }
         
-        generationProgress.value = 100
-        generationMessage.value = '模型生成成功！'
+        // 开始轮询
+        setTimeout(pollStatus, 2000) // 2秒后开始第一次查询
         
+        // 返回model，但状态仍为generating
         return model
       } else {
         model.status = 'failed'
-        generationMessage.value = response.error || '生成失败'
+        generationMessage.value = response.error || '提交任务失败'
         return null
       }
     } catch (error) {
