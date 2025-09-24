@@ -33,9 +33,9 @@ class Model3DApi {
   async textTo3D(request: TextTo3DRequest): Promise<ApiResponse<Model3DGeneration>> {
     try {
       // 模拟API调用 - 实际部署时替换为真实API调用
-      console.log('发起文本转3D请求:', {
+      console.log('发起文本轴3D请求:', {
         prompt: request.prompt || request.text,
-        polish: request.polish,
+        polish: request.polish, // 提示词优化
         enable_pbr: request.enable_pbr,
         face_count: request.face_count,
         generate_type: request.generate_type

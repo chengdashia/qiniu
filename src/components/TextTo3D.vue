@@ -61,14 +61,14 @@
         <el-form-item label="高级选项">
           <div class="advanced-options">
             <el-checkbox v-model="form.polish" :disabled="isGenerating">
-              启用模型抛光
+              开启提示词优化
             </el-checkbox>
             <el-checkbox v-model="form.enable_pbr" :disabled="isGenerating">
               启用PBR材质
             </el-checkbox>
           </div>
           <div class="option-hints">
-            <p>• 模型抛光：提高模型表面光滑度</p>
+            <p>• 提示词优化：AI自动优化您的文本描述，提高生成质量</p>
             <p>• PBR材质：生成更真实的材质效果</p>
           </div>
         </el-form-item>
