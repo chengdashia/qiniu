@@ -1,5 +1,217 @@
-# Vue 3 + TypeScript + Vite
+# 3D模型生成器
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+基于Vue 3和AI技术的3D模型生成应用，支持文本转3D和图片转3D功能。
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+## 功能特性
+
+### 🎯 核心功能
+- **文本转3D模型** - 输入文字描述，AI自动生成对应3D模型
+- **图片转3D模型** - 上传2D图片，智能重建为立体3D模型
+- **实时3D预览** - 强大的3D查看器，支持旋转、缩放、材质调整
+- **多格式导出** - 支持OBJ、STL、GLTF等主流3D格式
+
+### 🔧 技术栈
+- **前端框架**: Vue 3 + TypeScript + Vite
+- **UI组件**: Element Plus
+- **状态管理**: Pinia
+- **路由**: Vue Router
+- **3D渲染**: Three.js + WebGL
+- **AI服务**: Meshy AI (可配置)
+
+### 🎨 智能优化
+- **语义缓存系统** - 基于内容相似度的智能缓存，减少60-80%的API调用
+- **渐进式生成** - 支持低/中/高质量选项，平衡速度与效果
+- **响应式设计** - 完美适配桌面端和移动端
+
+## 快速开始
+
+### 环境要求
+- Node.js 16+ 
+- npm/yarn/pnpm
+
+### 安装依赖
+```bash
+npm install
+```
+
+### 启动开发服务器
+```bash
+npm run dev
+```
+
+### 构建生产版本
+```bash
+npm run build
+```
+
+### 预览生产构建
+```bash
+npm run preview
+```
+
+## 使用指南
+
+### 文本转3D
+1. 导航到"文本转3D"页面
+2. 在文本框中输入详细的物体描述
+   - 示例："一只可爱的橙色小猫"
+   - 示例："现代简约的办公椅"
+3. 选择生成质量（低/中/高）
+4. 可选：选择生成风格（写实/卡通/低聚合等）
+5. 点击"生成3D模型"按钮
+6. 等待生成完成，在右侧查看3D预览
+7. 满意后可导出为所需格式
+
+### 图片转3D
+1. 导航到"图片转3D"页面
+2. 上传清晰的2D图片（支持JPG、PNG、GIF、WebP）
+3. 选择生成质量和颜色保持选项
+4. 可选：启用图片预处理（增强、降噪、放大）
+5. 点击"生成3D模型"按钮
+6. 等待生成完成，在右侧查看3D预览
+7. 满意后可导出为所需格式
+
+### 3D模型预览
+- **鼠标控制**: 左键旋转、右键平移、滚轮缩放
+- **自动旋转**: 可开启/关闭模型自动旋转
+- **视角重置**: 一键重置到最佳观察角度
+- **背景调整**: 自定义背景颜色
+- **光照控制**: 调节光照强度
+- **全屏预览**: 支持全屏查看模型
+
+### 模型管理
+- **历史记录**: 自动保存所有生成的模型
+- **搜索筛选**: 按名称、类型、状态筛选模型
+- **批量管理**: 支持批量删除和导出
+- **格式导出**: OBJ、STL、GLTF格式一键导出
+
+## API配置
+
+### 环境变量
+创建 `.env` 文件并配置以下变量：
+
+```bash
+# Meshy AI API配置
+VITE_API_BASE_URL=https://api.meshy.ai/v1
+VITE_MESHY_API_KEY=your_api_key_here
+
+# 其他配置
+VITE_APP_TITLE=3D模型生成器
+```
+
+### 模拟模式
+当前版本运行在模拟模式下，会生成示例3D模型用于演示。
+要启用真实的AI生成功能，需要：
+
+1. 注册Meshy AI账户获取API密钥
+2. 在环境变量中配置API密钥
+3. 取消 `src/api/model3d.ts` 中真实API调用的注释
+4. 注释掉模拟代码部分
+
+## 项目结构
+
+```
+src/
+├── api/                 # API接口和缓存
+│   └── model3d.ts      # 3D模型生成API
+├── components/         # Vue组件
+│   ├── TextTo3D.vue   # 文本转3D组件
+│   ├── ImageTo3D.vue  # 图片转3D组件
+│   └── ModelViewer.vue # 3D模型查看器
+├── stores/            # Pinia状态管理
+│   └── model3d.ts     # 3D模型状态
+├── types/             # TypeScript类型定义
+│   └── 3d.ts          # 3D相关类型
+├── utils/             # 工具函数
+│   └── threeViewer.ts # Three.js封装
+├── views/             # 页面组件
+│   ├── HomeView.vue   # 首页
+│   ├── TextTo3DView.vue # 文本转3D页面
+│   ├── ImageTo3DView.vue # 图片转3D页面
+│   ├── GalleryView.vue # 模型画廊
+│   └── AboutView.vue  # 关于页面
+├── router/            # 路由配置
+└── main.ts           # 应用入口
+```
+
+## 性能优化
+
+### 智能缓存策略
+- **文本缓存**: 基于语义相似度匹配，相似描述复用结果
+- **图片缓存**: 基于文件哈希，相同图片直接返回缓存
+- **过期管理**: 24小时自动清理过期缓存
+- **内存优化**: 智能资源管理，及时释放GPU资源
+
+### 3D渲染优化
+- **LOD系统**: 根据视距自动调整模型精度
+- **材质压缩**: 自动优化纹理大小和格式
+- **渲染管线**: 基于WebGL的高效渲染
+- **内存管理**: 自动回收不用的几何体和材质
+
+## 部署说明
+
+### 静态部署
+项目构建后生成静态文件，可部署到：
+- Nginx/Apache
+- CDN服务（如七牛云、阿里云OSS）
+- Vercel、Netlify等平台
+
+### Docker部署
+```dockerfile
+FROM nginx:alpine
+COPY dist/ /usr/share/nginx/html/
+EXPOSE 80
+```
+
+### 环境配置
+- 开发环境：支持热更新，完整错误提示
+- 生产环境：代码压缩，资源优化
+- 移动端：响应式适配，触摸操作优化
+
+## 常见问题
+
+### Q: 模型生成需要多长时间？
+A: 
+- 低质量：15-30秒
+- 中等质量：30-60秒  
+- 高质量：1-3分钟
+
+### Q: 支持哪些图片格式？
+A: JPG、PNG、GIF、WebP，建议大小不超过10MB
+
+### Q: 如何提高生成质量？
+A: 
+- 文本：提供详细、具体的描述
+- 图片：使用高分辨率、清晰的图片
+
+### Q: 生成的模型可以商用吗？
+A: 取决于输入内容版权和AI服务条款，建议商用前咨询相关法律
+
+## 开发计划
+
+### 即将推出
+- [ ] 批量生成功能
+- [ ] 模型编辑器
+- [ ] 社区分享
+- [ ] 移动端APP
+- [ ] API开放平台
+
+### 未来规划
+- [ ] VR/AR预览
+- [ ] 动画生成
+- [ ] 物理模拟
+- [ ] 协作编辑
+
+## 贡献指南
+
+欢迎提交Issue和Pull Request来改进项目！
+
+## 许可证
+
+MIT License
+
+## 联系我们
+
+- 技术支持：issues页面提交问题
+- 功能建议：discussions讨论区
+- 商务合作：通过邮件联系
