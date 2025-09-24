@@ -17,9 +17,14 @@ async function initApp() {
   const authStore = useAuthStore()
   await authStore.initAuth()
   
-  // 初始化模型数据 - 确保示例模型在应用启动时就可用
+  // 初始化公共画廊模型 - 尝试从API加载，失败时使用示例模型
   const model3DStore = useModel3DStore()
-  model3DStore.initSampleModels()
+  await model3DStore.loadPublicGallery()
+  
+  // 如果用户已登录，加载个人模型
+  if (authStore.isAuthenticated) {
+    await model3DStore.loadUserModels()
+  }
   
   // 添加全局调试方法
   if (typeof window !== 'undefined') {

@@ -247,8 +247,8 @@ const generationProgress = computed(() => model3dStore.generationProgress)
 const generationMessage = computed(() => model3dStore.generationMessage)
 const currentModel = computed(() => model3dStore.currentModel)
 const imageModels = computed(() => 
-  // 显示用户的图片模型 + 公共示例模型
-  model3dStore.publicModels.filter(model => model.type === 'image')
+  // 显示用户的图片模型
+  model3dStore.userImageModels
 )
 
 // 方法

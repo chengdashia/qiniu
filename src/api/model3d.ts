@@ -138,39 +138,155 @@ class Model3DApi {
   }
 
   /**
-   * 查询生成进度
+   * 获取公共模型画廊（不需要认证）
    */
-  async getGenerationStatus(id: string): Promise<ApiResponse<Model3DGeneration>> {
+  async getPublicGallery(): Promise<ApiResponse<Model3D[]>> {
     try {
-      console.log('查询生成进度:', id)
+      console.log('获取公共模型画廊')
       
-      // 模拟进度查询
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // 模拟延迟
+      await new Promise(resolve => setTimeout(resolve, 800))
       
-      const mockResponse: ApiResponse<Model3DGeneration> = {
-        success: true,
-        data: {
-          id,
-          progress: 100,
-          modelUrl: 'mock://completed-model.gltf'
+      // 模拟公共模型数据
+      const publicModels: Model3D[] = [
+        {
+          id: 'public_1',
+          name: '经典立方体机器人',
+          type: 'text',
+          sourceContent: '一个立方体机器人',
+          createdAt: new Date(Date.now() - 86400000), // 1天前
+          status: 'completed',
+          userId: 'public',
+          geometry: generateMockGeometry('text', '一个立方体机器人'),
+          material: generateMockMaterial('一个立方体机器人')
+        },
+        {
+          id: 'public_2', 
+          name: '蓝色球体',
+          type: 'text',
+          sourceContent: '蓝色的球形物体',
+          createdAt: new Date(Date.now() - 172800000), // 2天前
+          status: 'completed',
+          userId: 'public',
+          geometry: generateMockGeometry('text', '蓝色的球形物体'),
+          material: generateMockMaterial('蓝色的球形物体')
+        },
+        {
+          id: 'public_3',
+          name: '红色圆环',
+          type: 'text', 
+          sourceContent: '红色的圆环形状',
+          createdAt: new Date(Date.now() - 259200000), // 3天前
+          status: 'completed',
+          userId: 'public',
+          geometry: generateMockGeometry('text', '红色的圆环形状'),
+          material: generateMockMaterial('红色的圆环形状')
+        },
+        {
+          id: 'public_4',
+          name: '绿色圆锥建筑',
+          type: 'text',
+          sourceContent: '绿色的圆锥体建筑',
+          createdAt: new Date(Date.now() - 345600000), // 4天前
+          status: 'completed',
+          userId: 'public',
+          geometry: generateMockGeometry('text', '绿色的圆锥体建筑'),
+          material: generateMockMaterial('绿色的圆锥体建筑')
+        },
+        {
+          id: 'public_5',
+          name: '紫色水晶',
+          type: 'text',
+          sourceContent: '紫色的多面体水晶',
+          createdAt: new Date(Date.now() - 432000000), // 5天前
+          status: 'completed',
+          userId: 'public',
+          geometry: generateMockGeometry('text', '紫色的多面体水晶'),
+          material: generateMockMaterial('紫色的多面体水晶')
+        },
+        {
+          id: 'public_6',
+          name: '可爱小狗模型',
+          type: 'image',
+          sourceContent: '可爱的小狗照片',
+          createdAt: new Date(Date.now() - 518400000), // 6天前
+          status: 'completed',
+          userId: 'public',
+          geometry: generateMockGeometry('image', '可爱的小狗照片'),
+          material: generateMockMaterial('可爱的小狗照片')
+        },
+        {
+          id: 'public_7',
+          name: '现代家具设计',
+          type: 'image',
+          sourceContent: '现代家具设计图片',
+          createdAt: new Date(Date.now() - 604800000), // 7天前
+          status: 'completed',
+          userId: 'public',
+          geometry: generateMockGeometry('image', '现代家具设计图片'),
+          material: generateMockMaterial('现代家具设计图片')
         }
-      }
-
-      return mockResponse
-
-      // 真实API调用
-      /*
-      const response = await this.client.get(`/status/${id}`)
+      ]
+      
       return {
         success: true,
-        data: response.data
+        data: publicModels,
+        message: '获取公共模型成功'
+      }
+      
+      // 真实API调用代码（注释掉，部署时启用）
+      /*
+      const response = await this.client.get('/public/gallery')
+      return {
+        success: true,
+        data: response.data.models
       }
       */
     } catch (error) {
+      console.error('获取公共模型画廊失败:', error)
       return {
         success: false,
-        error: '查询进度失败',
-        message: error instanceof Error ? error.message : '未知错误'
+        error: '获取公共模型失败',
+        message: error instanceof Error ? error.message : '未知错误',
+        data: []
+      }
+    }
+  }
+
+  /**
+   * 获取用户个人模型历史（需要认证）
+   */
+  async getUserModels(userId: string): Promise<ApiResponse<Model3D[]>> {
+    try {
+      console.log('获取用户模型历史:', userId)
+      
+      // 模拟延迟
+      await new Promise(resolve => setTimeout(resolve, 600))
+      
+      // 模拟用户个人模型数据（这里应该根据实际用户返回）
+      const userModels: Model3D[] = []
+      
+      return {
+        success: true,
+        data: userModels,
+        message: '获取用户模型成功'
+      }
+      
+      // 真实API调用代码（注释掉，部署时启用）
+      /*
+      const response = await this.client.get(`/users/${userId}/models`)
+      return {
+        success: true,
+        data: response.data.models
+      }
+      */
+    } catch (error) {
+      console.error('获取用户模型失败:', error)
+      return {
+        success: false,
+        error: '获取用户模型失败',
+        message: error instanceof Error ? error.message : '未知错误',
+        data: []
       }
     }
   }

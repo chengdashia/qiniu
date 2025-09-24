@@ -167,10 +167,10 @@
           </div>
           
           <!-- 统计信息 -->
-          <div class="stats-bar" v-if="historyData?.list && historyData.list.length > 0">
+          <div class="stats-bar" v-if="historyList.length > 0">
             <div class="stats-item">
               <span class="stats-label">总计:</span>
-              <span class="stats-value">{{ filteredHistory.length }} / {{ historyData.list.length }}</span>
+              <span class="stats-value">{{ filteredHistory.length }} / {{ historyList.length }}</span>
             </div>
             <div class="stats-item">
               <span class="stats-label">已完成:</span>
@@ -189,14 +189,14 @@
           <div v-loading="historyLoading" class="models-content">
             <div v-if="filteredHistory.length === 0" class="empty-state">
               <el-icon size="80" color="#c0c4cc"><FolderOpened /></el-icon>
-              <h3>{{ historyData?.list && historyData.list.length === 0 ? '暂无模型历史记录' : '无匹配结果' }}</h3>
+              <h3>{{ historyList.length === 0 ? '暂无模型历史记录' : '无匹配结果' }}</h3>
               <p>
-                {{ historyData?.list && historyData.list.length === 0 
+                {{ historyList.length === 0 
                   ? '您还没有创建任何3D模型，去创建第一个吧！' 
                   : '尝试调整筛选条件或搜索关键词'
                 }}
               </p>
-              <div class="empty-actions" v-if="historyData?.list && historyData.list.length === 0">
+              <div class="empty-actions" v-if="historyList.length === 0">
                 <el-button type="primary" @click="$router.push('/text-to-3d')">
                   <el-icon><EditPen /></el-icon>
                   文本转3D
@@ -554,10 +554,26 @@ const passwordRules: FormRules = {
   ]
 }
 
-// 计算属性
+// 计算属性 - 基于store中的个人模型数据
+const historyList = computed(() => {
+  // 将store中的个人模型转换为历史记录格式
+  return model3dStore.personalModels.map(model => ({
+    id: model.id,
+    userId: model.userId || '',
+    modelId: model.id,
+    modelName: model.name,
+    modelType: model.type as 'text' | 'image' | 'upload',
+    sourceContent: model.sourceContent,
+    status: model.status as 'completed' | 'failed' | 'generating',
+    createdAt: model.createdAt,
+    fileSize: model.fileInfo?.size || 0,
+    format: model.fileInfo?.format || '',
+    thumbnailUrl: model.type === 'image' ? model.sourceContent : undefined
+  }))
+})
+
 const filteredHistory = computed(() => {
-  if (!historyData.value?.list) return []
-  let result = [...historyData.value.list]
+  let result = [...historyList.value]
   
   // 搜索过滤
   if (searchKeyword.value) {
@@ -598,15 +614,15 @@ const filteredHistory = computed(() => {
 })
 
 const completedHistory = computed(() => 
-  historyData.value?.list?.filter(item => item.status === 'completed') || []
+  historyList.value.filter(item => item.status === 'completed')
 )
 
 const textHistory = computed(() => 
-  historyData.value?.list?.filter(item => item.modelType === 'text') || []
+  historyList.value.filter(item => item.modelType === 'text')
 )
 
 const imageHistory = computed(() => 
-  historyData.value?.list?.filter(item => item.modelType === 'image') || []
+  historyList.value.filter(item => item.modelType === 'image')
 )
 
 const paginatedHistory = computed(() => {
@@ -681,18 +697,9 @@ const loadUserStats = async () => {
 
 // 加载模型历史
 const loadHistory = async () => {
-  historyLoading.value = true
-  try {
-    console.log('Loading user model history...')
-    const data = await authStore.getUserModelHistory(currentPage.value, pageSize.value)
-    console.log('Model history loaded:', data)
-    if (data) {
-      historyData.value = data
-    }
-  } catch (error) {
-    console.error('Failed to load history:', error)
-  } finally {
-    historyLoading.value = false
+  // 现在直接使用store中的数据，无需单独加载
+  if (authStore.isAuthenticated) {
+    await model3dStore.loadUserModels()
   }
 }
 
@@ -727,7 +734,7 @@ const downloadModel = async (item: UserModelHistory) => {
 const deleteModel = async (item: UserModelHistory) => {
   try {
     await ElMessageBox.confirm(
-      `确定要删除模型 "${item.modelName}" 吗？此操作不可撤销。`,
+      `确定要删除模型 “${item.modelName}” 吗？此操作不可撤销。`,
       '确认删除',
       {
         confirmButtonText: '确定',
@@ -736,8 +743,9 @@ const deleteModel = async (item: UserModelHistory) => {
       }
     )
     
+    // 使用store的删除方法
+    model3dStore.removeModel(item.modelId)
     ElMessage.success('模型删除成功')
-    refreshHistory()
   } catch {
     // 用户取消删除
   }
@@ -876,7 +884,7 @@ onMounted(async () => {
   try {
     await Promise.all([
       loadUserStats(),
-      loadHistory()
+      loadHistory() // 加载用户模型数据
     ])
   } catch (error) {
     console.error('Failed to load profile data:', error)

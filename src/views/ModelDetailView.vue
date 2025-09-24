@@ -314,8 +314,8 @@ const model = computed(() => {
 
 // 生命周期
 onMounted(() => {
-  // 确保有示例模型
-  if (model3dStore.models.length === 0) {
+  // 确保有公共模型数据
+  if (model3dStore.publicGalleryModels.length === 0) {
     model3dStore.initSampleModels()
   }
   

@@ -331,9 +331,6 @@ import type { Model3D, ExportFormat } from '../types/3d'
 const model3dStore = useModel3DStore()
 const router = useRouter()
 
-// 移除这里的初始化调用，因为已经在main.ts中全局初始化了
-// model3dStore.initSampleModels()
-
 // 状态
 const searchKeyword = ref('')
 const filterType = ref('')
@@ -343,8 +340,8 @@ const viewMode = ref<'grid' | 'list'>('grid')
 const currentPage = ref(1)
 const pageSize = ref(12)
 
-// 计算属性 - 使用公共模型
-const models = computed(() => model3dStore.publicModels) // 使用公共模型而不是所有模型
+// 计算属性 - 使用公共画廊模型
+const models = computed(() => model3dStore.publicGalleryModels) // 使用公共画廊模型
 const currentModel = computed(() => model3dStore.currentModel)
 const completedModels = computed(() => model3dStore.completedModels)
 const textModels = computed(() => models.value.filter(m => m.type === 'text'))
@@ -480,7 +477,7 @@ async function clearAllModels() {
       }
     )
     
-    model3dStore.clearModels()
+    model3dStore.clearPersonalModels()
     ElMessage.success('所有模型已清空')
   } catch {
     // 用户取消
@@ -492,8 +489,8 @@ function handlePageChange(page: number) {
 }
 
 function refreshSampleModels() {
-  model3dStore.initSampleModels()
-  ElMessage.success('示例模型已刷新')
+  model3dStore.loadPublicGallery()
+  ElMessage.success('公共画廊已刷新')
 }
 
 function getSourcePreview(model: Model3D): string {

@@ -10,16 +10,20 @@ import { ElMessage } from 'element-plus'
 export const useModel3DStore = defineStore('model3d', () => {
   // 获取认证store
   const authStore = useAuthStore()
-  // 状态
-  const models = ref<Model3D[]>([])
+  
+  // 状态 - 分离公共模型和用户模型
+  const publicGalleryModels = ref<Model3D[]>([]) // 公共画廊模型
+  const personalModels = ref<Model3D[]>([])   // 用户个人模型
   const currentModel = ref<Model3D | null>(null)
   const isGenerating = ref(false)
   const generationProgress = ref(0)
   const generationMessage = ref('')
+  const isLoadingPublic = ref(false)
+  const isLoadingUser = ref(false)
 
-  // 初始化时添加一些示例模型
+  // 初始化公共示例模型（仅用于开发演示）
   function initSampleModels() {
-    if (models.value.length === 0) {
+    if (publicGalleryModels.value.length === 0) {
       const sampleData = [
         { text: '一个立方体机器人', type: 'text' as const },
         { text: '蓝色的球形物体', type: 'text' as const },
@@ -46,56 +50,96 @@ export const useModel3DStore = defineStore('model3d', () => {
           userId: 'demo_samples' // 示例模型的特殊用户ID
         }
         
-        models.value.push(sampleModel)
+        publicGalleryModels.value.push(sampleModel)
       })
       
       // 设置第一个为当前模型
-      const firstModel = models.value[0]
+      const firstModel = publicGalleryModels.value[0]
       if (firstModel) {
         setCurrentModel(firstModel)
       }
       
-      console.log('🎨 示例模型已初始化:', models.value.length, '个模型')
+      console.log('🎨 示例模型已初始化:', publicGalleryModels.value.length, '个模型')
+    }
+  }
+
+  /**
+   * 加载公共画廊模型
+   */
+  async function loadPublicGallery() {
+    if (isLoadingPublic.value) return
+    
+    isLoadingPublic.value = true
+    try {
+      const response = await model3DApi.getPublicGallery()
+      if (response.success && response.data) {
+        publicGalleryModels.value = response.data
+        console.log('✅ 公共画廊模型加载成功:', response.data.length, '个模型')
+      } else {
+        // 如果API失败，使用示例模型
+        initSampleModels()
+      }
+    } catch (error) {
+      console.error('❌ 加载公共画廊失败:', error)
+      // 出错时使用示例模型
+      initSampleModels()
+    } finally {
+      isLoadingPublic.value = false
+    }
+  }
+
+  /**
+   * 加载用户个人模型
+   */
+  async function loadUserModels() {
+    if (isLoadingUser.value || !authStore.isAuthenticated) return
+    
+    const userId = authStore.currentUser?.id
+    if (!userId) return
+    
+    isLoadingUser.value = true
+    try {
+      const response = await model3DApi.getUserModels(userId)
+      if (response.success && response.data) {
+        personalModels.value = response.data
+        console.log('✅ 用户模型加载成功:', response.data.length, '个模型')
+      }
+    } catch (error) {
+      console.error('❌ 加载用户模型失败:', error)
+    } finally {
+      isLoadingUser.value = false
     }
   }
 
   // 计算属性
   const completedModels = computed(() => 
-    models.value.filter(model => model.status === 'completed')
+    [...publicGalleryModels.value, ...personalModels.value].filter(model => model.status === 'completed')
   )
   
   const failedModels = computed(() => 
-    models.value.filter(model => model.status === 'failed')
+    [...publicGalleryModels.value, ...personalModels.value].filter(model => model.status === 'failed')
   )
 
   const generatingModels = computed(() => 
-    models.value.filter(model => model.status === 'generating')
+    [...publicGalleryModels.value, ...personalModels.value].filter(model => model.status === 'generating')
   )
   
-  // 公共模型（示例模型 + 已完成的所有模型）
-  const publicModels = computed(() => 
-    models.value.filter(model => 
-      model.status === 'completed' && 
-      (model.userId === 'demo_samples' || model.userId) // 示例模型和所有用户的模型都可公开展示
-    )
+  // 用户的模型（按类型筛选）
+  const userTextModels = computed(() => 
+    personalModels.value.filter(model => model.type === 'text')
   )
   
-  // 当前用户的模型
-  const userModels = computed(() => {
-    const currentUserId = authStore.currentUser?.id
-    if (!currentUserId) return []
-    return models.value.filter(model => model.userId === currentUserId)
-  })
+  const userImageModels = computed(() => 
+    personalModels.value.filter(model => model.type === 'image')
+  )
   
-  const userCompletedModels = computed(() => {
-    const currentUserId = authStore.currentUser?.id
-    if (!currentUserId) return []
-    return models.value.filter(model => 
-      model.userId === currentUserId && model.status === 'completed'
-    )
-  })
-
-  // 操作方法
+  const userUploadModels = computed(() => 
+    personalModels.value.filter(model => model.type === 'upload')
+  )
+  
+  const userCompletedModels = computed(() => 
+    personalModels.value.filter(model => model.status === 'completed')
+  )
 
   /**
    * 文本转3D模型
@@ -120,7 +164,7 @@ export const useModel3DStore = defineStore('model3d', () => {
       if (cached) {
         generationMessage.value = '从缓存中获取模型'
         const model = createModelFromCache('text', promptText, cached.geometry, cached.material)
-        addModel(model)
+        addPersonalModel(model)
         setCurrentModel(model)
         return model
       }
@@ -136,7 +180,7 @@ export const useModel3DStore = defineStore('model3d', () => {
         userId: authStore.currentUser?.id // 添加用户ID
       }
 
-      addModel(model)
+      addPersonalModel(model)
       setCurrentModel(model)
 
       // 模拟进度更新
@@ -209,7 +253,7 @@ export const useModel3DStore = defineStore('model3d', () => {
       if (cached) {
         generationMessage.value = '从缓存中获取模型'
         const model = createModelFromCache('image', request.imageFile.name, cached.geometry, cached.material)
-        addModel(model)
+        addPersonalModel(model)
         setCurrentModel(model)
         return model
       }
@@ -225,7 +269,7 @@ export const useModel3DStore = defineStore('model3d', () => {
         userId: authStore.currentUser?.id // 添加用户ID
       }
 
-      addModel(model)
+      addPersonalModel(model)
       setCurrentModel(model)
 
       // 模拟进度更新
@@ -351,7 +395,7 @@ export const useModel3DStore = defineStore('model3d', () => {
       })
     }
 
-    addModel(model)
+    addPersonalModel(model)
     setCurrentModel(model)
     return model
   }
@@ -380,10 +424,10 @@ export const useModel3DStore = defineStore('model3d', () => {
   }
 
   /**
-   * 添加模型到列表
+   * 添加个人模型到列表
    */
-  function addModel(model: Model3D) {
-    models.value.unshift(model) // 新模型添加到前面
+  function addPersonalModel(model: Model3D) {
+    personalModels.value.unshift(model) // 新模型添加到前面
   }
 
   /**
@@ -397,31 +441,44 @@ export const useModel3DStore = defineStore('model3d', () => {
    * 删除模型
    */
   function removeModel(id: string) {
-    const index = models.value.findIndex(model => model.id === id)
+    // 先在个人模型中查找
+    let index = personalModels.value.findIndex(model => model.id === id)
+    let removedModel: Model3D | undefined = undefined
+    
     if (index > -1) {
-      const removedModel = models.value.splice(index, 1)[0]
-      
-      // 如果删除的是当前模型，清空当前模型
-      if (currentModel.value?.id === id) {
-        currentModel.value = null
+      const removed = personalModels.value.splice(index, 1)
+      removedModel = removed.length > 0 ? removed[0] : undefined
+    } else {
+      // 在公共模型中查找（仅限管理员操作）
+      index = publicGalleryModels.value.findIndex(model => model.id === id)
+      if (index > -1) {
+        const removed = publicGalleryModels.value.splice(index, 1)
+        removedModel = removed.length > 0 ? removed[0] : undefined
       }
-      
-      // 清理资源
-      if (removedModel && removedModel.geometry) {
+    }
+    
+    // 如果删除的是当前模型，清空当前模型
+    if (currentModel.value?.id === id) {
+      currentModel.value = null
+    }
+    
+    // 清理资源
+    if (removedModel) {
+      if (removedModel.geometry) {
         removedModel.geometry.dispose()
       }
-      if (removedModel && removedModel.material) {
+      if (removedModel.material) {
         (removedModel.material as any).dispose?.()
       }
     }
   }
 
   /**
-   * 清空所有模型
+   * 清空所有个人模型
    */
-  function clearModels() {
+  function clearPersonalModels() {
     // 清理资源
-    models.value.forEach(model => {
+    personalModels.value.forEach(model => {
       if (model.geometry) {
         model.geometry.dispose()
       }
@@ -430,7 +487,7 @@ export const useModel3DStore = defineStore('model3d', () => {
       }
     })
     
-    models.value = []
+    personalModels.value = []
     currentModel.value = null
   }
 
@@ -438,35 +495,46 @@ export const useModel3DStore = defineStore('model3d', () => {
    * 根据ID获取模型
    */
   function getModelById(id: string): Model3D | undefined {
-    return models.value.find(model => model.id === id)
+    // 先在个人模型中查找
+    let model = personalModels.value.find(model => model.id === id)
+    if (model) return model
+    
+    // 再在公共模型中查找
+    return publicGalleryModels.value.find(model => model.id === id)
   }
 
   return {
     // 状态
-    models,
+    publicGalleryModels,
+    personalModels,
     currentModel,
     isGenerating,
     generationProgress,
     generationMessage,
+    isLoadingPublic,
+    isLoadingUser,
     
     // 计算属性
     completedModels,
     failedModels,
     generatingModels,
-    publicModels, // 公共模型（包括示例模型）
-    userModels,
+    userTextModels,
+    userImageModels,
+    userUploadModels,
     userCompletedModels,
     
     // 方法
     initSampleModels,
+    loadPublicGallery,
+    loadUserModels,
     generateFromText,
     generateFromImage,
     createUploadedModel,
     exportModel,
-    addModel,
+    addPersonalModel,
     setCurrentModel,
     removeModel,
-    clearModels,
+    clearPersonalModels,
     getModelById
   }
 })
