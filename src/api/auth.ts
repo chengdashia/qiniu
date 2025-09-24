@@ -22,7 +22,7 @@ const api = axios.create({
 // 请求拦截器 - 添加token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('auth_token')
+    const token = sessionStorage.getItem('auth_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -198,10 +198,10 @@ export const authApi = {
       // 模拟API延迟
       await new Promise(resolve => setTimeout(resolve, 300))
       
-      // 清除本地存储
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('refresh_token')
-      localStorage.removeItem('user_info')
+      // 清除会话存储
+      sessionStorage.removeItem('auth_token')
+      sessionStorage.removeItem('refresh_token')
+      sessionStorage.removeItem('user_info')
       
       return {
         success: true,
@@ -221,7 +221,7 @@ export const authApi = {
    */
   async getCurrentUser(): Promise<AuthResponse> {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = sessionStorage.getItem('auth_token')
       if (!token) {
         return {
           success: false,
@@ -254,7 +254,7 @@ export const authApi = {
         data: {
           user,
           token,
-          refreshToken: localStorage.getItem('refresh_token') || ''
+          refreshToken: sessionStorage.getItem('refresh_token') || ''
         }
       }
     } catch (error) {
@@ -272,7 +272,7 @@ export const authApi = {
    */
   async updateProfile(updates: UpdateProfileRequest): Promise<AuthResponse> {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = sessionStorage.getItem('auth_token')
       if (!token) {
         return {
           success: false,
@@ -322,7 +322,7 @@ export const authApi = {
         data: {
           user,
           token,
-          refreshToken: localStorage.getItem('refresh_token') || ''
+          refreshToken: sessionStorage.getItem('refresh_token') || ''
         },
         message: '资料更新成功'
       }
@@ -341,7 +341,7 @@ export const authApi = {
    */
   async changePassword(passwordData: ChangePasswordRequest): Promise<{ success: boolean; message: string }> {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = sessionStorage.getItem('auth_token')
       if (!token) {
         return {
           success: false,
@@ -405,7 +405,7 @@ export const authApi = {
     error?: string
   }> {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = sessionStorage.getItem('auth_token')
       if (!token) {
         return {
           success: false,
@@ -512,7 +512,7 @@ export const authApi = {
     error?: string
   }> {
     try {
-      const token = localStorage.getItem('auth_token')
+      const token = sessionStorage.getItem('auth_token')
       if (!token) {
         return {
           success: false,

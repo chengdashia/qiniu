@@ -7,8 +7,8 @@ import { authApi } from '../api/auth'
 export const useAuthStore = defineStore('auth', () => {
   // 状态
   const user = ref<User | null>(null)
-  const token = ref<string | null>(localStorage.getItem('auth_token'))
-  const refreshToken = ref<string | null>(localStorage.getItem('refresh_token'))
+  const token = ref<string | null>(sessionStorage.getItem('auth_token'))
+  const refreshToken = ref<string | null>(sessionStorage.getItem('refresh_token'))
   const isLoading = ref(false)
 
   // 计算属性
@@ -17,9 +17,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   // 初始化认证状态
   async function initAuth() {
-    const storedToken = localStorage.getItem('auth_token')
-    const storedRefreshToken = localStorage.getItem('refresh_token')
-    const storedUserInfo = localStorage.getItem('user_info')
+    const storedToken = sessionStorage.getItem('auth_token')
+    const storedRefreshToken = sessionStorage.getItem('refresh_token')
+    const storedUserInfo = sessionStorage.getItem('user_info')
     
     console.log('=== Auth Initialization Start ===')
     console.log('StoredToken:', storedToken)
@@ -83,9 +83,9 @@ export const useAuthStore = defineStore('auth', () => {
         refreshToken.value = response.data.refreshToken
         
         // 保存到本地存储
-        localStorage.setItem('auth_token', response.data.token)
-        localStorage.setItem('refresh_token', response.data.refreshToken)
-        localStorage.setItem('user_info', JSON.stringify(response.data.user))
+        sessionStorage.setItem('auth_token', response.data.token)
+        sessionStorage.setItem('refresh_token', response.data.refreshToken)
+        sessionStorage.setItem('user_info', JSON.stringify(response.data.user))
         
         ElMessage.success(response.message || '登录成功')
         return true
@@ -117,9 +117,9 @@ export const useAuthStore = defineStore('auth', () => {
         refreshToken.value = response.data.refreshToken
         
         // 保存到本地存储
-        localStorage.setItem('auth_token', response.data.token)
-        localStorage.setItem('refresh_token', response.data.refreshToken)
-        localStorage.setItem('user_info', JSON.stringify(response.data.user))
+        sessionStorage.setItem('auth_token', response.data.token)
+        sessionStorage.setItem('refresh_token', response.data.refreshToken)
+        sessionStorage.setItem('user_info', JSON.stringify(response.data.user))
         
         ElMessage.success(response.message || '注册成功')
         return true
@@ -180,7 +180,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (response.success && response.data) {
         user.value = response.data.user
         // 更新本地存储的用户信息
-        localStorage.setItem('user_info', JSON.stringify(response.data.user))
+        sessionStorage.setItem('user_info', JSON.stringify(response.data.user))
         console.log('User validation successful')
         return true
       } else {
@@ -219,7 +219,7 @@ export const useAuthStore = defineStore('auth', () => {
       
       if (response.success && response.data) {
         user.value = response.data.user
-        localStorage.setItem('user_info', JSON.stringify(response.data.user))
+        sessionStorage.setItem('user_info', JSON.stringify(response.data.user))
         ElMessage.success(response.message || '资料更新成功')
         return true
       } else {
@@ -327,8 +327,8 @@ export const useAuthStore = defineStore('auth', () => {
     console.log('token.value:', token.value)
     console.log('user.value:', user.value)
     console.log('isAuthenticated.value:', isAuthenticated.value)
-    console.log('localStorage auth_token:', localStorage.getItem('auth_token'))
-    console.log('localStorage user_info:', localStorage.getItem('user_info'))
+    console.log('sessionStorage auth_token:', sessionStorage.getItem('auth_token'))
+    console.log('sessionStorage user_info:', sessionStorage.getItem('user_info'))
     console.log('========================')
   }
 
@@ -340,10 +340,10 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     refreshToken.value = null
     
-    // 清除本地存储
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('refresh_token')
-    localStorage.removeItem('user_info')
+    // 清除会话存储
+    sessionStorage.removeItem('auth_token')
+    sessionStorage.removeItem('refresh_token')
+    sessionStorage.removeItem('user_info')
   }
 
   /**
