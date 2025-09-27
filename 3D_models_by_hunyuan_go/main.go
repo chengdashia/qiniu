@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-contrib/cors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
@@ -978,6 +980,25 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
+
+	r.Use(cors.New(cors.Config{
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		AllowOriginFunc: func(origin string) bool {
+			return true // 或者用更具体的逻辑来判断
+		},
+		MaxAge: 12 * time.Hour,
+	}))
+
+	// 显式处理 OPTIONS 请求以支持预检请求
+	r.OPTIONS("/api/*path", func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Length, Content-Type, Authorization")
+		c.Status(http.StatusOK)
+	})
 
 	r.GET("/", handleHealth)
 
