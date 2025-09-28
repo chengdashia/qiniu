@@ -303,7 +303,12 @@ async function handleGenerate() {
     })
     
     if (result) {
-      ElMessage.success('3D模型生成成功！')
+      // 检查是否是本地降级模型
+      if (result.isLocalFallback) {
+        ElMessage.warning('资源不足，已加载本地模型')
+      } else {
+        ElMessage.success('3D模型生成成功！')
+      }
     } else {
       ElMessage.error('模型生成失败，请重试')
     }

@@ -13,6 +13,7 @@ export interface Model3D {
   status: 'generating' | 'completed' | 'failed'
   userId?: string // 模型属主的用户ID
   jobId?: string // 任务ID，用于下载模型
+  isLocalFallback?: boolean // 标记是否为本地降级模型
   // 新增字段用于文件上传
   fileInfo?: {
     originalName: string
@@ -50,6 +51,10 @@ export interface ImageTo3DRequest {
   imageFile: File
   quality: 'low' | 'medium' | 'high'
   preserveColors: boolean
+  // 新增字段，匹配文本转3D的参数
+  generate_type?: 'Normal' | 'LowPoly' | 'Geometry' | 'Sketch'
+  enable_pbr?: boolean
+  face_count?: number
 }
 
 export interface ApiResponse<T> {

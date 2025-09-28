@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as THREE from 'three'
 import type { Model3D, TextTo3DRequest, ImageTo3DRequest, Upload3DRequest, ExportFormat } from '../types/3d'
-import { model3DApi, model3DCache, generateMockGeometry, generateMockMaterial, loadModelFromBlob } from '../api/model3d'
+import { model3DApi, model3DCache, generateMockGeometry, generateMockMaterial, loadModelFromBlob, loadLocalModel } from '../api/model3d'
 import type { LoadResult } from '../utils/fileLoader'
 import { useAuthStore } from './auth'
 import { ElMessage } from 'element-plus'
@@ -189,6 +189,63 @@ export const useModel3DStore = defineStore('model3d', () => {
       const response = await model3DApi.textTo3D(request)
 
       if (response.success && response.data) {
+        console.log('API返回成功响应:', response)
+        console.log('检查modelBlob:', response.data.modelBlob ? '存在' : '不存在')
+        
+        // 检查是否直接返回了模型数据（本地降级）
+        if (response.data.modelBlob) {
+          console.log('检测到modelBlob，开始解析本地模型')
+          generationProgress.value = 80
+          generationMessage.value = '正在解析本地模型...'
+          
+          try {
+            console.log('开始调用loadModelFromBlob解析模型...')
+            // 解析本地模型文件
+            const loadResult = await loadModelFromBlob(response.data.modelBlob, 'local_model.glb')
+            console.log('loadModelFromBlob解析结果:', loadResult)
+            
+            if (loadResult.geometry && loadResult.material) {
+              console.log('模型解析成功，更新模型数据')
+              model.geometry = loadResult.geometry
+              model.material = loadResult.material
+              model.status = 'completed'
+              model.isLocalFallback = true // 标记为本地降级模型
+              
+              // 缓存结果
+              model3DCache.cacheTextResult(promptText, loadResult.geometry, loadResult.material)
+              
+              generationProgress.value = 100
+              generationMessage.value = '资源不足，已加载本地模型'
+              
+              console.log('设置当前模型并返回')
+              setCurrentModel({...model})
+              return model
+            } else {
+              console.error('loadModelFromBlob返回的geometry或material为空')
+            }
+          } catch (parseError) {
+            console.error('解析本地模型失败:', parseError)
+            console.log('parseError详细信息:', parseError instanceof Error ? parseError.message : parseError)
+            // 解析失败时使用模拟数据
+            const geometry = generateMockGeometry('text', promptText)
+            const material = generateMockMaterial(promptText)
+            
+            model.geometry = geometry
+            model.material = material
+            model.status = 'completed'
+            model.isLocalFallback = true // 标记为本地降级模型
+            
+            model3DCache.cacheTextResult(promptText, geometry, material)
+            
+            generationProgress.value = 100
+            generationMessage.value = '资源不足，本地模型解析失败，使用默认模型'
+            
+            setCurrentModel(model)
+            return model
+          }
+        }
+        
+        // 正常API流程
         const jobId = response.data.id
         const promptUsed = response.data.prompt_used
         
@@ -209,8 +266,113 @@ export const useModel3DStore = defineStore('model3d', () => {
         
         return model
       } else {
+        // 检查是否是ResourceInsufficient错误，如果是，尝试本地降级
+        const errorMessage = response.error || response.message || '提交任务失败'
+        console.log('检查API响应错误信息:', errorMessage)
+        console.log('完整响应对象:', response)
+        
+        if (errorMessage.includes('ResourceInsufficient') || errorMessage.includes('TencentCloudSDKError')) {
+          console.log('检测到ResourceInsufficient或TencentCloudSDKError，尝试本地降级')
+          
+          // 先显示资源不足消息
+          generationProgress.value = 50
+          generationMessage.value = '资源不足，正在加载本地模型...'
+          
+          try {
+            // 使用导入的loadLocalModel函数
+            const localModelBlob = await loadLocalModel()
+            
+            if (localModelBlob) {
+              generationProgress.value = 80
+              generationMessage.value = '正在解析本地模型...'
+              
+              const loadResult = await loadModelFromBlob(localModelBlob, 'local_model.glb')
+              
+              if (loadResult.geometry && loadResult.material) {
+                console.log('本地模型解析成功，更新模型数据')
+                console.log('Geometry:', loadResult.geometry)
+                console.log('Material:', loadResult.material)
+                
+                model.geometry = loadResult.geometry
+                model.material = loadResult.material
+                model.status = 'completed'
+                model.isLocalFallback = true // 标记为本地降级模型
+                
+                // 缓存结果
+                model3DCache.cacheTextResult(promptText, loadResult.geometry, loadResult.material)
+                
+                generationProgress.value = 100
+                generationMessage.value = '资源不足，已加载本地模型'
+                
+                // 确保模型被设置为当前模型
+                console.log('设置当前模型:', model)
+                setCurrentModel({...model}) // 使用扩展运算符触发响应式更新
+                
+                // 在返回前稍等一下，确保更新生效
+                await new Promise(resolve => setTimeout(resolve, 100))
+                return model
+              } else {
+                console.warn('本地模型解析失败，使用模拟数据')
+                // 解析失败，使用模拟数据
+                const geometry = generateMockGeometry('text', promptText)
+                const material = generateMockMaterial(promptText)
+                
+                model.geometry = geometry
+                model.material = material
+                model.status = 'completed'
+                model.isLocalFallback = true // 标记为本地降级模型
+                
+                model3DCache.cacheTextResult(promptText, geometry, material)
+                
+                generationProgress.value = 100
+                generationMessage.value = '资源不足，本地模型解析失败，使用默认模型'
+                
+                setCurrentModel({...model})
+                return model
+              }
+            } else {
+              console.warn('本地模型加载失败，使用模拟数据')
+              // 本地模型加载失败，使用模拟数据兜底
+              const geometry = generateMockGeometry('text', promptText)
+              const material = generateMockMaterial(promptText)
+              
+              model.geometry = geometry
+              model.material = material
+              model.status = 'completed'
+              model.isLocalFallback = true // 标记为本地降级模型
+              
+              model3DCache.cacheTextResult(promptText, geometry, material)
+              
+              generationProgress.value = 100
+              generationMessage.value = '资源不足，本地模型不可用，使用默认模型'
+              
+              setCurrentModel({...model})
+              return model
+            }
+          } catch (localError) {
+            console.error('本地模型加载失败:', localError)
+            // 本地模型加载失败，使用模拟数据兜底
+            const geometry = generateMockGeometry('text', promptText)
+            const material = generateMockMaterial(promptText)
+            
+            model.geometry = geometry
+            model.material = material
+            model.status = 'completed'
+            model.isLocalFallback = true // 标记为本地降级模型
+            
+            model3DCache.cacheTextResult(promptText, geometry, material)
+            
+            generationProgress.value = 100
+            generationMessage.value = '资源不足，本地模型加载失败，使用默认模型'
+            
+            setCurrentModel({...model})
+            return model
+          }
+        }
+        
+        // 其他错误情况
         model.status = 'failed'
-        generationMessage.value = response.error || '提交任务失败'
+        generationMessage.value = errorMessage
         return null
       }
     } catch (error) {
@@ -222,15 +384,22 @@ export const useModel3DStore = defineStore('model3d', () => {
       return null
     } finally {
       isGenerating.value = false
+      // 如果是本地降级模型，保持资源不足的消息更长时间
+      const isLocalFallbackModel = currentModel.value?.isLocalFallback === true
+      const delayTime = isLocalFallbackModel ? 5000 : 3000 // 本地降级模型保持5秒
+      
       setTimeout(() => {
         generationProgress.value = 0
-        generationMessage.value = ''
-      }, 3000)
+        // 只有在非本地降级模型时才清空消息
+        if (!isLocalFallbackModel) {
+          generationMessage.value = ''
+        }
+      }, delayTime)
     }
   }
 
   /**
-   * 图片转3D模型
+   * 图片转3D模型 - 完整轮询流程
    */
   async function generateFromImage(request: ImageTo3DRequest): Promise<Model3D | null> {
     // 检查用户认证
@@ -241,7 +410,7 @@ export const useModel3DStore = defineStore('model3d', () => {
     
     isGenerating.value = true
     generationProgress.value = 0
-    generationMessage.value = '正在分析图片并生成3D模型...'
+    generationMessage.value = '正在提交图片任务...'
 
     try {
       // 检查缓存
@@ -262,44 +431,180 @@ export const useModel3DStore = defineStore('model3d', () => {
         sourceContent: URL.createObjectURL(request.imageFile),
         createdAt: new Date(),
         status: 'generating',
-        userId: authStore.currentUser?.id // 添加用户ID
+        userId: authStore.currentUser?.id,
+        jobId: '' // 先初始化为空，等获取到job_id后更新
       }
 
       addPersonalModel(model)
       setCurrentModel(model)
 
-      // 模拟进度更新
-      const progressInterval = setInterval(() => {
-        generationProgress.value += 8
-        if (generationProgress.value >= 90) {
-          clearInterval(progressInterval)
-        }
-      }, 300)
-
-      // 调用API
+      // 步骤1: 提交任务
+      generationProgress.value = 10
       const response = await model3DApi.imageeTo3D(request)
-      clearInterval(progressInterval)
 
-      if (response.success) {
-        // 生成模拟几何体和材质
-        const geometry = generateMockGeometry('image', request.imageFile.name)
-        const material = generateMockMaterial(request.imageFile.name)
-
-        // 更新模型
-        model.geometry = geometry
-        model.material = material
-        model.status = 'completed'
+      if (response.success && response.data) {
+        console.log('图片转3D API返回成功响应:', response)
+        console.log('检查modelBlob:', response.data.modelBlob ? '存在' : '不存在')
         
-        // 缓存结果
-        await model3DCache.cacheImageResult(request.imageFile, geometry, material)
+        // 检查是否直接返回了模型数据（本地降级）
+        if (response.data.modelBlob) {
+          console.log('检测到modelBlob，开始解析本地模型')
+          generationProgress.value = 80
+          generationMessage.value = '正在解析本地模型...'
+          
+          try {
+            console.log('开始调用loadModelFromBlob解析模型...')
+            // 解析本地模型文件
+            const loadResult = await loadModelFromBlob(response.data.modelBlob, 'local_model.glb')
+            console.log('loadModelFromBlob解析结果:', loadResult)
+            
+            if (loadResult.geometry && loadResult.material) {
+              console.log('模型解析成功，更新模型数据')
+              model.geometry = loadResult.geometry
+              model.material = loadResult.material
+              model.status = 'completed'
+              model.isLocalFallback = true // 标记为本地降级模型
+              
+              // 缓存结果
+              await model3DCache.cacheImageResult(request.imageFile, loadResult.geometry, loadResult.material)
+              
+              generationProgress.value = 100
+              generationMessage.value = '资源不足，已加载本地模型'
+              
+              console.log('设置当前模型并返回')
+              setCurrentModel({...model})
+              return model
+            } else {
+              console.error('loadModelFromBlob返回的geometry或material为空')
+            }
+          } catch (parseError) {
+            console.error('解析本地模型失败:', parseError)
+            // 解析失败时使用模拟数据
+            const geometry = generateMockGeometry('image', request.imageFile.name)
+            const material = generateMockMaterial(request.imageFile.name)
+            
+            model.geometry = geometry
+            model.material = material
+            model.status = 'completed'
+            model.isLocalFallback = true
+            
+            await model3DCache.cacheImageResult(request.imageFile, geometry, material)
+            
+            generationProgress.value = 100
+            generationMessage.value = '资源不足，本地模型解析失败，使用默认模型'
+            
+            setCurrentModel(model)
+            return model
+          }
+        }
         
-        generationProgress.value = 100
-        generationMessage.value = '模型生成成功！'
+        // 正常API流程
+        const jobId = response.data.id
+        
+        // 保存job_id到模型中
+        model.jobId = jobId
+        
+        generationProgress.value = 20
+        generationMessage.value = '任务已提交，正在检查状态...'
+        
+        // 步骤2: 轮询任务状态
+        await pollJobStatusForImage(jobId, model, request)
         
         return model
       } else {
+        // 检查是否是ResourceInsufficient错误，如果是，尝试本地降级
+        const errorMessage = response.error || response.message || '提交任务失败'
+        console.log('检查图片转3D API响应错误信息:', errorMessage)
+        
+        if (errorMessage.includes('ResourceInsufficient') || errorMessage.includes('TencentCloudSDKError')) {
+          console.log('检测到ResourceInsufficient或TencentCloudSDKError，尝试本地降级')
+          
+          generationProgress.value = 50
+          generationMessage.value = '资源不足，正在加载本地模型...'
+          
+          try {
+            const localModelBlob = await loadLocalModel()
+            
+            if (localModelBlob) {
+              generationProgress.value = 80
+              generationMessage.value = '正在解析本地模型...'
+              
+              const loadResult = await loadModelFromBlob(localModelBlob, 'local_model.glb')
+              
+              if (loadResult.geometry && loadResult.material) {
+                console.log('本地模型解析成功，更新模型数据')
+                
+                model.geometry = loadResult.geometry
+                model.material = loadResult.material
+                model.status = 'completed'
+                model.isLocalFallback = true
+                
+                await model3DCache.cacheImageResult(request.imageFile, loadResult.geometry, loadResult.material)
+                
+                generationProgress.value = 100
+                generationMessage.value = '资源不足，已加载本地模型'
+                
+                setCurrentModel({...model})
+                return model
+              } else {
+                console.warn('本地模型解析失败，使用模拟数据')
+                const geometry = generateMockGeometry('image', request.imageFile.name)
+                const material = generateMockMaterial(request.imageFile.name)
+                
+                model.geometry = geometry
+                model.material = material
+                model.status = 'completed'
+                model.isLocalFallback = true
+                
+                await model3DCache.cacheImageResult(request.imageFile, geometry, material)
+                
+                generationProgress.value = 100
+                generationMessage.value = '资源不足，本地模型解析失败，使用默认模型'
+                
+                setCurrentModel({...model})
+                return model
+              }
+            } else {
+              console.warn('本地模型加载失败，使用模拟数据')
+              const geometry = generateMockGeometry('image', request.imageFile.name)
+              const material = generateMockMaterial(request.imageFile.name)
+              
+              model.geometry = geometry
+              model.material = material
+              model.status = 'completed'
+              model.isLocalFallback = true
+              
+              await model3DCache.cacheImageResult(request.imageFile, geometry, material)
+              
+              generationProgress.value = 100
+              generationMessage.value = '资源不足，本地模型不可用，使用默认模型'
+              
+              setCurrentModel({...model})
+              return model
+            }
+          } catch (localError) {
+            console.error('本地模型加载失败:', localError)
+            const geometry = generateMockGeometry('image', request.imageFile.name)
+            const material = generateMockMaterial(request.imageFile.name)
+            
+            model.geometry = geometry
+            model.material = material
+            model.status = 'completed'
+            model.isLocalFallback = true
+            
+            await model3DCache.cacheImageResult(request.imageFile, geometry, material)
+            
+            generationProgress.value = 100
+            generationMessage.value = '资源不足，本地模型加载失败，使用默认模型'
+            
+            setCurrentModel({...model})
+            return model
+          }
+        }
+        
+        // 其他错误情况
         model.status = 'failed'
-        generationMessage.value = response.error || '生成失败'
+        generationMessage.value = errorMessage
         return null
       }
     } catch (error) {
@@ -311,10 +616,15 @@ export const useModel3DStore = defineStore('model3d', () => {
       return null
     } finally {
       isGenerating.value = false
+      const isLocalFallbackModel = currentModel.value?.isLocalFallback === true
+      const delayTime = isLocalFallbackModel ? 5000 : 3000
+      
       setTimeout(() => {
         generationProgress.value = 0
-        generationMessage.value = ''
-      }, 3000)
+        if (!isLocalFallbackModel) {
+          generationMessage.value = ''
+        }
+      }, delayTime)
     }
   }
 
@@ -353,6 +663,117 @@ export const useModel3DStore = defineStore('model3d', () => {
       generationMessage.value = '下载失败'
       return false
     }
+  }
+
+  /**
+   * 轮询图片转3D任务状态
+   */
+  async function pollJobStatusForImage(jobId: string, model: Model3D, request: ImageTo3DRequest): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let pollCount = 0
+      const maxPolls = 30 // 最多轮询30次（约5分钟）
+      const pollInterval = 10000 // 每10秒轮询一次
+      
+      const poll = async () => {
+        if (pollCount >= maxPolls) {
+          model.status = 'failed'
+          generationMessage.value = '任务超时，请稍后重试'
+          reject(new Error('任务超时'))
+          return
+        }
+        
+        try {
+          const statusResponse = await model3DApi.queryJobStatus(jobId)
+          
+          if (statusResponse.success && statusResponse.data) {
+            const { status, error_message } = statusResponse.data
+            
+            switch (status) {
+              case 'WAIT':
+                generationMessage.value = `任务排队中... (${pollCount + 1}/${maxPolls})`
+                generationProgress.value = Math.min(30 + pollCount * 2, 50)
+                break
+                
+              case 'RUN':
+                generationMessage.value = `正在生成中... (${pollCount + 1}/${maxPolls})`
+                generationProgress.value = Math.min(50 + pollCount * 2, 80)
+                break
+                
+              case 'DONE':
+                generationMessage.value = '生成完成，正在下载模型...'
+                generationProgress.value = 90
+                
+                // 下载模型文件（图片转3D默认使用GLB格式）
+                try {
+                  const downloadResponse = await model3DApi.downloadModel(jobId, 1) // 1 = GLB格式
+                  
+                  if (downloadResponse.success && downloadResponse.data) {
+                    // 解析模型
+                    const loadResult = await loadModelFromBlob(downloadResponse.data, `${jobId}.glb`)
+                    
+                    if (loadResult.geometry && loadResult.material) {
+                      model.geometry = loadResult.geometry
+                      model.material = loadResult.material
+                      model.status = 'completed'
+                      
+                      // 立即触发视图更新
+                      setCurrentModel({...model})
+                      
+                      // 缓存结果
+                      await model3DCache.cacheImageResult(request.imageFile, loadResult.geometry, loadResult.material)
+                      
+                      generationProgress.value = 100
+                      generationMessage.value = '模型生成成功！'
+                      resolve()
+                      return
+                    }
+                  }
+                  
+                  // 下载成功但解析失败，使用模拟数据
+                  throw new Error('模型解析失败')
+                } catch (downloadError) {
+                  console.error('下载模型失败:', downloadError)
+                  // 下载失败，使用模拟数据
+                  const geometry = generateMockGeometry('image', request.imageFile.name)
+                  const material = generateMockMaterial(request.imageFile.name)
+                  
+                  model.geometry = geometry
+                  model.material = material
+                  model.status = 'completed'
+                  
+                  await model3DCache.cacheImageResult(request.imageFile, geometry, material)
+                  
+                  generationProgress.value = 100
+                  generationMessage.value = '模型生成成功（使用默认显示）'
+                  resolve()
+                  return
+                }
+                
+              case 'FAIL':
+                model.status = 'failed'
+                generationMessage.value = error_message || '生成失败'
+                reject(new Error(error_message || '生成失败'))
+                return
+            }
+            
+            // 继续轮询
+            pollCount++
+            setTimeout(poll, pollInterval)
+          } else {
+            // 查询状态失败
+            pollCount++
+            setTimeout(poll, pollInterval)
+          }
+        } catch (error) {
+          console.error('查询任务状态失败:', error)
+          pollCount++
+          setTimeout(poll, pollInterval)
+        }
+      }
+      
+      // 开始轮询
+      poll()
+    })
   }
 
   /**

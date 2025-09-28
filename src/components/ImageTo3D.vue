@@ -36,6 +36,7 @@
                 <div class="upload-text">
                   <p>点击或拖拽图片到此处上传</p>
                   <p class="upload-tip">支持 JPG、PNG、GIF 格式，建议图片大小不超过 10MB</p>
+                  <p class="upload-tip test-hint">✨ 测试提示：文件名包含 "test" 或 "测试" 可体验资源不足降级机制</p>
                 </div>
               </div>
               <div v-else class="image-preview">
@@ -67,12 +68,51 @@
           </div>
         </el-form-item>
         
+        <el-form-item label="生成类型" prop="generate_type">
+          <el-radio-group v-model="form.generate_type" :disabled="isGenerating">
+            <el-radio value="Normal">普通模式</el-radio>
+            <el-radio value="LowPoly">低多边形</el-radio>
+            <el-radio value="Geometry">几何风格</el-radio>
+            <el-radio value="Sketch">素描风格</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        
         <el-form-item label="生成质量" prop="quality">
           <el-radio-group v-model="form.quality" :disabled="isGenerating">
             <el-radio value="low">低质量 (快速生成)</el-radio>
             <el-radio value="medium">中等质量 (推荐)</el-radio>
             <el-radio value="high">高质量 (精细模型)</el-radio>
           </el-radio-group>
+        </el-form-item>
+        
+        <el-form-item label="面数设置" prop="face_count">
+          <el-slider
+            v-model="form.face_count"
+            :min="40000"
+            :max="500000"
+            :step="10000"
+            :disabled="isGenerating"
+            :format-tooltip="formatFaceCount"
+            show-input
+            input-size="small"
+          />
+          <div class="face-count-hint">
+            <span>当前设置: {{ formatFaceCount(form.face_count) }}</span>
+            <el-tooltip content="面数越高，模型越精细，但生成时间也越长" placement="top">
+              <el-icon class="hint-icon"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </div>
+        </el-form-item>
+        
+        <el-form-item label="高级选项">
+          <div class="advanced-options">
+            <el-checkbox v-model="form.enable_pbr" :disabled="isGenerating">
+              启用PBR材质
+            </el-checkbox>
+          </div>
+          <div class="option-hints">
+            <p>• PBR材质：生成更真实的材质效果</p>
+          </div>
         </el-form-item>
         
         <el-form-item label="颜色保持">
@@ -186,6 +226,16 @@
               查看
             </el-button>
             <el-button 
+              v-if="model.status === 'failed' || model.status === 'generating'"
+              size="small" 
+              type="warning" 
+              plain
+              @click.stop="retryDownload(model)"
+              :loading="isRetrying"
+            >
+              重试下载
+            </el-button>
+            <el-button 
               size="small" 
               type="danger" 
               plain
@@ -209,7 +259,8 @@ import {
   Edit,
   Promotion, 
   Loading, 
-  Clock 
+  Clock,
+  QuestionFilled
 } from '@element-plus/icons-vue'
 import { useModel3DStore } from '../stores/model3d'
 import type { ImageTo3DRequest } from '../types/3d'
@@ -222,10 +273,17 @@ const formRef = ref<FormInstance>()
 const uploadRef = ref<UploadInstance>()
 
 // 表单数据
-const form = reactive<ImageTo3DRequest>({
+const form = reactive<ImageTo3DRequest & {
+  generate_type: 'Normal' | 'LowPoly' | 'Geometry' | 'Sketch'
+  enable_pbr: boolean
+  face_count: number
+}>({  
   imageFile: null as any,
   quality: 'medium',
-  preserveColors: true
+  preserveColors: true,
+  generate_type: 'Normal',
+  enable_pbr: false,
+  face_count: 150000
 })
 
 // 图片预览URL
@@ -233,6 +291,9 @@ const previewUrl = ref<string>('')
 
 // 预处理选项
 const preprocessingOptions = ref<string[]>([])
+
+// 重试状态
+const isRetrying = ref(false)
 
 // 表单验证规则
 const rules = {
@@ -308,11 +369,19 @@ async function handleGenerate() {
     const result = await model3dStore.generateFromImage({
       imageFile: form.imageFile,
       quality: form.quality,
-      preserveColors: form.preserveColors
+      preserveColors: form.preserveColors,
+      generate_type: form.generate_type,
+      enable_pbr: form.enable_pbr,
+      face_count: form.face_count
     })
     
     if (result) {
-      ElMessage.success('3D模型生成成功！')
+      // 检查是否是本地降级模型
+      if (result.isLocalFallback) {
+        ElMessage.warning('资源不足，已加载本地模型')
+      } else {
+        ElMessage.success('3D模型生成成功！')
+      }
     } else {
       ElMessage.error('模型生成失败，请重试')
     }
@@ -432,6 +501,38 @@ function formatFileSize(bytes: number): string {
 function formatDate(date: Date): string {
   return date.toLocaleString('zh-CN')
 }
+
+function formatFaceCount(value: number): string {
+  if (value >= 100000) {
+    return `${(value / 10000).toFixed(0)}万面`
+  }
+  return `${value.toLocaleString()}面`
+}
+
+// 重试下载模型
+async function retryDownload(model: any) {
+  if (!model.id.startsWith('image_')) return
+  
+  isRetrying.value = true
+  
+  try {
+    // 提取job_id（假设存储在模型id中或其他地方）
+    const jobId = model.jobId || model.id.replace('image_', '')
+    
+    const success = await model3dStore.downloadModelManually(jobId)
+    
+    if (success) {
+      ElMessage.success('模型下载成功！')
+    } else {
+      ElMessage.error('下载失败，请稍后重试')
+    }
+  } catch (error) {
+    console.error('重试下载失败:', error)
+    ElMessage.error('下载过程中发生错误')
+  } finally {
+    isRetrying.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -500,6 +601,12 @@ function formatDate(date: Date): string {
   color: #a8abb2;
 }
 
+.test-hint {
+  color: #409eff !important;
+  font-weight: 500;
+  margin-top: 8px;
+}
+
 .image-preview {
   position: relative;
   width: 100%;
@@ -532,6 +639,46 @@ function formatDate(date: Date): string {
 
 .image-info {
   width: 100%;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin: 8px 0 0 0;
+}
+
+.face-count-hint {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 14px;
+  color: #666;
+}
+
+.hint-icon {
+  color: #909399;
+  cursor: help;
+}
+
+.advanced-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.option-hints {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #666;
+}
+
+.option-hints p {
+  margin: 4px 0;
+  line-height: 1.4;
 }
 
 .form-tip {

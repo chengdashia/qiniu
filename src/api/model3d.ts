@@ -43,6 +43,21 @@ class Model3DApi {
         generate_type: request.generate_type
       })
       
+      // 临时测试：模拟ResourceInsufficient错误
+      const promptText = request.prompt || request.text || ''
+      if (promptText.includes('一匹马') || promptText.includes('生成一匹马')) {
+        console.log('模拟ResourceInsufficient错误用于测试')
+        // 直接抛出模拟错误
+        const mockError = new Error('[TencentCloudSDKError] Code=ResourceInsufficient, Message=资源不足。, RequestId=test-simulation')
+        ;(mockError as any).response = {
+          data: {
+            ok: false,
+            error: '[TencentCloudSDKError] Code=ResourceInsufficient, Message=资源不足。, RequestId=test-simulation'
+          }
+        }
+        throw mockError
+      }
+      
       // 步骤1: 调用本地后端API提交任务
       const submitResponse = await this.client.post('/api/submit-text', {
         prompt: request.prompt || request.text,
@@ -53,7 +68,25 @@ class Model3DApi {
       })
       
       if (!submitResponse.data.ok) {
-        throw new Error(submitResponse.data.error || '提交任务失败')
+        // 检查是否是ResourceInsufficient错误
+        const errorMessage = submitResponse.data.error || '提交任务失败'
+        if (errorMessage.includes('ResourceInsufficient')) {
+          console.log('资源不足，尝试加载本地模型文件')
+          // 直接加载public/models下的模型文件
+          const localModel = await loadLocalModel()
+          if (localModel) {
+            return {
+              success: true,
+              data: {
+                id: `local_${Date.now()}`,
+                modelBlob: localModel,
+                prompt_used: request.prompt || request.text
+              },
+              message: '已加载本地模型'
+            }
+          }
+        }
+        throw new Error(errorMessage)
       }
       
       const jobId = submitResponse.data.job_id
@@ -72,6 +105,72 @@ class Model3DApi {
       }
     } catch (error) {
       console.error('文本转3D API错误:', error)
+      console.log('错误类型:', typeof error)
+      console.log('错误对象:', error)
+      
+      // 检查是否是Axios错误并且包含ResourceInsufficient
+      if (error && typeof error === 'object') {
+        const errorResponse = (error as any).response
+        console.log('错误响应:', errorResponse)
+        
+        if (errorResponse?.data) {
+          const errorData = errorResponse.data
+          console.log('检查错误响应:', errorData)
+          
+          if (!errorData.ok && errorData.error && errorData.error.includes('ResourceInsufficient')) {
+            console.log('在catch中检测到ResourceInsufficient错误，尝试加载本地模型')
+            try {
+              const localModel = await loadLocalModel()
+              if (localModel) {
+                return {
+                  success: true,
+                  data: {
+                    id: `local_${Date.now()}`,
+                    modelBlob: localModel,
+                    prompt_used: request.prompt || request.text
+                  },
+                  message: '已加载本地模型'
+                }
+              }
+            } catch (localError) {
+              console.error('本地模型加载失败:', localError)
+            }
+          }
+        }
+        
+        // 检查错误消息本身
+        const errorMessage = (error as any).message || ''
+        console.log('检查错误消息:', errorMessage)
+        
+          if (errorMessage.includes('ResourceInsufficient')) {
+            console.log('在错误消息中检测到ResourceInsufficient，尝试加载本地模型')
+            try {
+              console.log('开始调用loadLocalModel函数...')
+              const localModel = await loadLocalModel()
+              console.log('loadLocalModel返回结果:', localModel ? `成功 - 文件大小: ${localModel.size} bytes` : '失败')
+              
+              if (localModel) {
+                console.log('本地模型加载成功，返回成功响应')
+                const result = {
+                  success: true,
+                  data: {
+                    id: `local_${Date.now()}`,
+                    modelBlob: localModel,
+                    prompt_used: request.prompt || request.text
+                  },
+                  message: '已加载本地模型'
+                }
+                console.log('返回的API响应:', result)
+                return result
+              } else {
+                console.log('本地模型加载返回了null或undefined')
+              }
+            } catch (localError) {
+              console.error('本地模型加载失败:', localError)
+            }
+          }
+      }
+      
       return {
         success: false,
         error: '文本转3D生成失败',
@@ -136,50 +235,152 @@ class Model3DApi {
   }
 
   /**
-   * 图片转3D模型
+   * 图片转3D模型 - 完整轮询流程
    */
-  async imageeTo3D(request: ImageTo3DRequest): Promise<ApiResponse<Model3DGeneration>> {
+  async imageeTo3D(request: ImageTo3DRequest): Promise<ApiResponse<{id: string, modelBlob?: Blob}>> {
     try {
       console.log('发起图片转3D请求:', request.imageFile.name)
       
-      // 模拟延迟
-      await new Promise(resolve => setTimeout(resolve, MOCK_DELAY + 1000))
-      
-      // 模拟成功响应
-      const mockResponse: ApiResponse<Model3DGeneration> = {
-        success: true,
-        data: {
-          id: `image_${Date.now()}`,
-          progress: 100,
-          estimatedTime: 45,
-          modelUrl: 'mock://generated-from-image.gltf',
-          textureUrl: 'mock://extracted-texture.png'
-        },
-        message: '模型生成成功'
+      // 临时测试：模拟ResourceInsufficient错误
+      if (request.imageFile.name.includes('test') || request.imageFile.name.includes('测试') || request.imageFile.name.includes('horse') || request.imageFile.name.includes('马')) {
+        console.log('模拟ResourceInsufficient错误用于测试')
+        // 直接抛出模拟错误
+        const mockError = new Error('[TencentCloudSDKError] Code=ResourceInsufficient, Message=资源不足。, RequestId=test-simulation')
+        ;(mockError as any).response = {
+          data: {
+            ok: false,
+            error: '[TencentCloudSDKError] Code=ResourceInsufficient, Message=资源不足。, RequestId=test-simulation'
+          }
+        }
+        throw mockError
       }
-
-      return mockResponse
-
-      // 真实API调用代码（注释掉，部署时启用）
-      /*
-      const formData = new FormData()
-      formData.append('image', request.imageFile)
-      formData.append('quality', request.quality)
-      formData.append('preserve_colors', request.preserveColors.toString())
       
-      const response = await this.client.post('/image-to-3d', formData, {
+      // 步骤1: 调用本地后端API提交任务
+      const formData = new FormData()
+      formData.append('file', request.imageFile)
+      
+      // 根据质量设置面数
+      let face_count: number
+      switch (request.quality) {
+        case 'low':
+          face_count = 80000
+          break
+        case 'high':
+          face_count = 300000
+          break
+        default: // medium
+          face_count = 150000
+      }
+      
+      formData.append('face_count', face_count.toString())
+      formData.append('generate_type', 'Normal')
+      formData.append('enable_pbr', request.preserveColors.toString())
+      
+      const submitResponse = await this.client.post('/api/submit-image', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       })
       
+      if (!submitResponse.data.ok) {
+        // 检查是否是ResourceInsufficient错误
+        const errorMessage = submitResponse.data.error || '提交任务失败'
+        if (errorMessage.includes('ResourceInsufficient')) {
+          console.log('资源不足，尝试加载本地模型文件')
+          // 直接加载public/models下的模型文件
+          const localModel = await loadLocalModel()
+          if (localModel) {
+            return {
+              success: true,
+              data: {
+                id: `local_${Date.now()}`,
+                modelBlob: localModel
+              },
+              message: '已加载本地模型'
+            }
+          }
+        }
+        throw new Error(errorMessage)
+      }
+      
+      const jobId = submitResponse.data.job_id
+      
+      console.log('图片转3D任务提交成功，job_id:', jobId)
+      
+      // 返回任务ID，轮询将在store中处理
       return {
         success: true,
-        data: response.data
+        data: {
+          id: jobId
+        },
+        message: '任务提交成功'
       }
-      */
     } catch (error) {
       console.error('图片转3D API错误:', error)
+      console.log('错误类型:', typeof error)
+      console.log('错误对象:', error)
+      
+      // 检查是否是Axios错误并且包含ResourceInsufficient
+      if (error && typeof error === 'object') {
+        const errorResponse = (error as any).response
+        console.log('错误响应:', errorResponse)
+        
+        if (errorResponse?.data) {
+          const errorData = errorResponse.data
+          console.log('检查错误响应:', errorData)
+          
+          if (!errorData.ok && errorData.error && errorData.error.includes('ResourceInsufficient')) {
+            console.log('在catch中检测到ResourceInsufficient错误，尝试加载本地模型')
+            try {
+              const localModel = await loadLocalModel()
+              if (localModel) {
+                return {
+                  success: true,
+                  data: {
+                    id: `local_${Date.now()}`,
+                    modelBlob: localModel
+                  },
+                  message: '已加载本地模型'
+                }
+              }
+            } catch (localError) {
+              console.error('本地模型加载失败:', localError)
+            }
+          }
+        }
+        
+        // 检查错误消息本身
+        const errorMessage = (error as any).message || ''
+        console.log('检查错误消息:', errorMessage)
+        
+        if (errorMessage.includes('ResourceInsufficient')) {
+          console.log('在错误消息中检测到ResourceInsufficient，尝试加载本地模型')
+          try {
+            console.log('开始调用loadLocalModel函数...')
+            const localModel = await loadLocalModel()
+            console.log('loadLocalModel返回结果:', localModel ? `成功 - 文件大小: ${localModel.size} bytes` : '失败')
+            
+            if (localModel) {
+              console.log('本地模型加载成功，返回成功响应')
+              const result = {
+                success: true,
+                data: {
+                  id: `local_${Date.now()}`,
+                  modelBlob: localModel
+                },
+                message: '已加载本地模型'
+              }
+              console.log('返回的API响应:', result)
+              return result
+            } else {
+              console.log('本地模型加载返回了null或undefined')
+            }
+          } catch (localError) {
+            console.error('本地模型加载失败:', localError)
+          }
+        }
+      }
+      
       return {
         success: false,
         error: '图片转3D生成失败',
@@ -575,6 +776,45 @@ class Model3DCache {
         this.imageCache.delete(key)
       }
     }
+  }
+}
+
+/**
+ * 加载本地模型文件
+ */
+export async function loadLocalModel(): Promise<Blob | null> {
+  try {
+    console.log('开始加载本地模型文件...')
+    // 尝试加载public/models目录下的模型文件
+    const modelFiles = [
+      '1363811188324302848_1.glb'
+      // 可以在这里添加更多本地模型文件
+    ]
+    
+    for (const filename of modelFiles) {
+      try {
+        console.log(`尝试加载模型: /models/${filename}`)
+        const response = await fetch(`/models/${filename}`)
+        console.log(`模型文件请求状态: ${response.status}`)
+        
+        if (response.ok) {
+          console.log('成功加载本地模型:', filename)
+          const blob = await response.blob()
+          console.log('模型文件大小:', blob.size, 'bytes')
+          return blob
+        } else {
+          console.warn(`加载模型失败: ${response.status} ${response.statusText}`)
+        }
+      } catch (error) {
+        console.warn('加载本地模型失败:', filename, error)
+      }
+    }
+    
+    console.warn('未找到可用的本地模型文件')
+    return null
+  } catch (error) {
+    console.error('加载本地模型时发生错误:', error)
+    return null
   }
 }
 
