@@ -42,4 +42,11 @@ curl -OJ http://127.0.0.1:5000/api/download/<job_id>/0
 
 自行根据  `.env`配置环境变量
 
+#### 执行代码
+
+```shell
+go mod tidy
+
+go run main.go
+```
 
