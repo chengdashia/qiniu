@@ -289,6 +289,13 @@ export class ThreeViewer {
   public getWireframeMode(): boolean {
     return this.isWireframe
   }
+  // 强制刷新视图
+  public forceRefresh() {
+    if (this.renderer && this.scene && this.camera) {
+      this.renderer.render(this.scene, this.camera)
+    }
+  }
+
   // 更新配置
   public updateConfig(newConfig: Partial<ViewerConfig>) {
     this.config = { ...this.config, ...newConfig }

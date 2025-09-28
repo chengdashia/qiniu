@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as THREE from 'three'
 import type { Model3D, TextTo3DRequest, ImageTo3DRequest, Upload3DRequest, ExportFormat } from '../types/3d'
-import { model3DApi, model3DCache, generateMockGeometry, generateMockMaterial } from '../api/model3d'
+import { model3DApi, model3DCache, generateMockGeometry, generateMockMaterial, loadModelFromBlob } from '../api/model3d'
 import type { LoadResult } from '../utils/fileLoader'
 import { useAuthStore } from './auth'
 import { ElMessage } from 'element-plus'
@@ -142,7 +142,7 @@ export const useModel3DStore = defineStore('model3d', () => {
   )
 
   /**
-   * 文本转3D模型
+   * 文本转3D模型 - 完整轮询流程
    */
   async function generateFromText(request: TextTo3DRequest): Promise<Model3D | null> {
     // 检查用户认证
@@ -153,7 +153,7 @@ export const useModel3DStore = defineStore('model3d', () => {
     
     isGenerating.value = true
     generationProgress.value = 0
-    generationMessage.value = '正在生成3D模型...'
+    generationMessage.value = '正在提交任务...'
 
     try {
       // 使用新的prompt字段，如果没有则回退到text字段
@@ -177,81 +177,36 @@ export const useModel3DStore = defineStore('model3d', () => {
         sourceContent: promptText,
         createdAt: new Date(),
         status: 'generating',
-        userId: authStore.currentUser?.id // 添加用户ID
+        userId: authStore.currentUser?.id, // 添加用户ID
+        jobId: '' // 先初始化为空，等获取到job_id后更新
       }
 
       addPersonalModel(model)
       setCurrentModel(model)
 
-      // 模拟进度更新
-      const progressInterval = setInterval(() => {
-        generationProgress.value += 10
-        if (generationProgress.value >= 90) {
-          clearInterval(progressInterval)
-        }
-      }, 200)
-
-      // 调用API提交任务
+      // 步骤1: 提交任务
+      generationProgress.value = 10
       const response = await model3DApi.textTo3D(request)
 
-      if (response.success && response.data?.id) {
-        // 任务提交成功，开始轮询状态
+      if (response.success && response.data) {
         const jobId = response.data.id
-        generationMessage.value = '任务已提交，正在生成中...'
+        const promptUsed = response.data.prompt_used
         
-        // 轮询任务状态
-        const pollStatus = async () => {
-          try {
-            const statusResponse = await model3DApi.queryJobStatus(jobId)
-            if (statusResponse.success && statusResponse.data) {
-              const { status, files, error } = statusResponse.data
-              
-              switch (status) {
-                case 'WAIT':
-                  generationMessage.value = '任务排队中...'
-                  break
-                case 'RUN':
-                  generationMessage.value = '正在生成中...'
-                  generationProgress.value = Math.min(generationProgress.value + 5, 85)
-                  break
-                case 'DONE':
-                  clearInterval(progressInterval)
-                  // 生成成功，处理结果
-                  const geometry = generateMockGeometry('text', promptText)
-                  const material = generateMockMaterial(promptText)
-                  
-                  model.geometry = geometry
-                  model.material = material
-                  model.status = 'completed'
-                  
-                  model3DCache.cacheTextResult(promptText, geometry, material)
-                  
-                  generationProgress.value = 100
-                  generationMessage.value = '模型生成成功！'
-                  return model
-                  
-                case 'FAIL':
-                  clearInterval(progressInterval)
-                  model.status = 'failed'
-                  generationMessage.value = error || '生成失败'
-                  return null
-              }
-              
-              // 继续轮询
-              if (status === 'WAIT' || status === 'RUN') {
-                setTimeout(pollStatus, 3000) // 3秒后再次查询
-              }
-            }
-          } catch (error) {
-            console.error('查询任务状态失败:', error)
-            setTimeout(pollStatus, 5000) // 出错时5秒后重试
-          }
+        // 保存job_id到模型中
+        model.jobId = jobId
+        
+        // 更新模型名称（如果有优化后的提示词）
+        if (promptUsed && promptUsed !== promptText) {
+          model.name = `文本生成: ${promptUsed.substring(0, 20)}...`
+          model.sourceContent = promptUsed
         }
         
-        // 开始轮询
-        setTimeout(pollStatus, 2000) // 2秒后开始第一次查询
+        generationProgress.value = 20
+        generationMessage.value = '任务已提交，正在检查状态...'
         
-        // 返回model，但状态仍为generating
+        // 步骤2: 轮询任务状态
+        await pollJobStatus(jobId, model, promptUsed || promptText, request.modelFormat || 0)
+        
         return model
       } else {
         model.status = 'failed'
@@ -363,6 +318,154 @@ export const useModel3DStore = defineStore('model3d', () => {
     }
   }
 
+  /**
+   * 手动下载模型文件
+   */
+  async function downloadModelManually(jobId: string): Promise<boolean> {
+    try {
+      generationMessage.value = '正在下载模型文件...'
+      
+      const response = await model3DApi.downloadModel(jobId)
+      
+      if (response.success && response.data) {
+        // 尝试加载模型
+        try {
+          const loadResult = await loadModelFromBlob(response.data, `${jobId}.gltf`)
+          
+          if (loadResult.geometry && loadResult.material && currentModel.value) {
+            currentModel.value.geometry = loadResult.geometry
+            currentModel.value.material = loadResult.material
+            currentModel.value.status = 'completed'
+            
+            generationMessage.value = '模型下载和解析成功！'
+            
+            return true
+          }
+        } catch (parseError) {
+          console.error('解析下载的模型失败:', parseError)
+          generationMessage.value = '模型解析失败'
+        }
+      }
+      
+      return false
+    } catch (error) {
+      console.error('手动下载失败:', error)
+      generationMessage.value = '下载失败'
+      return false
+    }
+  }
+
+  /**
+   * 轮询任务状态
+   */
+  async function pollJobStatus(jobId: string, model: Model3D, promptText: string, modelFormat: number = 0): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let pollCount = 0
+      const maxPolls = 30 // 最多轮询30次（约5分钟）
+      const pollInterval = 10000 // 每10秒轮询一次
+      
+      const poll = async () => {
+        if (pollCount >= maxPolls) {
+          model.status = 'failed'
+          generationMessage.value = '任务超时，请稍后重试'
+          reject(new Error('任务超时'))
+          return
+        }
+        
+        try {
+          const statusResponse = await model3DApi.queryJobStatus(jobId)
+          
+          if (statusResponse.success && statusResponse.data) {
+            const { status, error_message } = statusResponse.data
+            
+            switch (status) {
+              case 'WAIT':
+                generationMessage.value = `任务排队中... (${pollCount + 1}/${maxPolls})`
+                generationProgress.value = Math.min(30 + pollCount * 2, 50)
+                break
+                
+              case 'RUN':
+                generationMessage.value = `正在生成中... (${pollCount + 1}/${maxPolls})`
+                generationProgress.value = Math.min(50 + pollCount * 2, 80)
+                break
+                
+              case 'DONE':
+                generationMessage.value = '生成完成，正在下载模型...'
+                generationProgress.value = 90
+                
+                // 下载模型文件
+                try {
+                  const downloadResponse = await model3DApi.downloadModel(jobId, modelFormat)
+                  
+                  if (downloadResponse.success && downloadResponse.data) {
+                    // 解析模型
+                    const fileExtension = modelFormat === 0 ? 'obj' : 'glb'
+                    const loadResult = await loadModelFromBlob(downloadResponse.data, `${jobId}.${fileExtension}`)
+                    
+                    if (loadResult.geometry && loadResult.material) {
+                      model.geometry = loadResult.geometry
+                      model.material = loadResult.material
+                      model.status = 'completed'
+                      
+                      // 立即触发视图更新
+                      setCurrentModel({...model})
+                      
+                      // 缓存结果
+                      model3DCache.cacheTextResult(promptText, loadResult.geometry, loadResult.material)
+                      
+                      generationProgress.value = 100
+                      generationMessage.value = '模型生成成功！'
+                      resolve()
+                      return
+                    }
+                  }
+                  
+                  // 下载成功但解析失败，使用模拟数据
+                  throw new Error('模型解析失败')
+                } catch (downloadError) {
+                  console.error('下载模型失败:', downloadError)
+                  // 下载失败，使用模拟数据
+                  const geometry = generateMockGeometry('text', promptText)
+                  const material = generateMockMaterial(promptText)
+                  
+                  model.geometry = geometry
+                  model.material = material
+                  model.status = 'completed'
+                  
+                  model3DCache.cacheTextResult(promptText, geometry, material)
+                  
+                  generationProgress.value = 100
+                  generationMessage.value = '模型生成成功（使用默认显示）'
+                  resolve()
+                  return
+                }
+                
+              case 'FAIL':
+                model.status = 'failed'
+                generationMessage.value = error_message || '生成失败'
+                reject(new Error(error_message || '生成失败'))
+                return
+            }
+            
+            // 继续轮询
+            pollCount++
+            setTimeout(poll, pollInterval)
+          } else {
+            // 查询状态失败
+            pollCount++
+            setTimeout(poll, pollInterval)
+          }
+        } catch (error) {
+          console.error('查询任务状态失败:', error)
+          pollCount++
+          setTimeout(poll, pollInterval)
+        }
+      }
+      
+      // 开始轮询
+      poll()
+    })
+  }
   /**
    * 从缓存创建模型
    */
@@ -572,6 +675,7 @@ export const useModel3DStore = defineStore('model3d', () => {
     generateFromImage,
     createUploadedModel,
     exportModel,
+    downloadModelManually,
     addPersonalModel,
     setCurrentModel,
     removeModel,

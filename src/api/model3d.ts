@@ -1,5 +1,8 @@
 import axios from 'axios'
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
 import type { 
   TextTo3DRequest, 
   ImageTo3DRequest, 
@@ -28,9 +31,9 @@ class Model3DApi {
   })
 
   /**
-   * 文本转3D模型
+   * 文本转3D模型 - 完整轮询流程
    */
-  async textTo3D(request: TextTo3DRequest): Promise<ApiResponse<Model3DGeneration>> {
+  async textTo3D(request: TextTo3DRequest): Promise<ApiResponse<{id: string, modelBlob?: Blob, prompt_used?: string}>> {
     try {
       console.log('发起文本转3D请求:', {
         prompt: request.prompt || request.text,
@@ -40,8 +43,8 @@ class Model3DApi {
         generate_type: request.generate_type
       })
       
-      // 调用本地后端API
-      const response = await this.client.post('/api/submit-text', {
+      // 步骤1: 调用本地后端API提交任务
+      const submitResponse = await this.client.post('/api/submit-text', {
         prompt: request.prompt || request.text,
         polish: request.polish,
         enable_pbr: request.enable_pbr,
@@ -49,18 +52,23 @@ class Model3DApi {
         generate_type: request.generate_type
       })
       
-      if (response.data.ok) {
-        return {
-          success: true,
-          data: {
-            id: response.data.job_id,
-            progress: 0,
-            estimatedTime: 30
-          },
-          message: '任务提交成功'
-        }
-      } else {
-        throw new Error(response.data.error || '提交失败')
+      if (!submitResponse.data.ok) {
+        throw new Error(submitResponse.data.error || '提交任务失败')
+      }
+      
+      const jobId = submitResponse.data.job_id
+      const promptUsed = submitResponse.data.prompt_used
+      
+      console.log('任务提交成功，job_id:', jobId)
+      
+      // 返回任务ID，轮询将在store中处理
+      return {
+        success: true,
+        data: {
+          id: jobId,
+          prompt_used: promptUsed
+        },
+        message: '任务提交成功'
       }
     } catch (error) {
       console.error('文本转3D API错误:', error)
@@ -93,6 +101,35 @@ class Model3DApi {
       return {
         success: false,
         error: '查询任务状态失败',
+        message: error instanceof Error ? error.message : '未知错误'
+      }
+    }
+  }
+
+  /**
+   * 下载3D模型文件
+   */
+  async downloadModel(jobId: string, index: number = 0): Promise<ApiResponse<Blob>> {
+    try {
+      const response = await this.client.get(`/api/download/${jobId}/${index}`, {
+        responseType: 'blob',
+        timeout: 120000 // 2分钟超时
+      })
+      
+      if (response.data) {
+        return {
+          success: true,
+          data: response.data,
+          message: '模型下载成功'
+        }
+      } else {
+        throw new Error('下载数据为空')
+      }
+    } catch (error) {
+      console.error('下载模型文件错误:', error)
+      return {
+        success: false,
+        error: '下载模型文件失败',
         message: error instanceof Error ? error.message : '未知错误'
       }
     }
@@ -549,3 +586,105 @@ export const model3DCache = new Model3DCache()
 setInterval(() => {
   model3DCache.cleanup()
 }, 60 * 60 * 1000) // 每小时清理一次
+
+/**
+ * 从Blob数据中加载3D模型
+ */
+export async function loadModelFromBlob(blob: Blob, filename: string = 'model'): Promise<{geometry?: THREE.BufferGeometry, material?: THREE.Material, model?: THREE.Object3D}> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob)
+    const fileExtension = filename.toLowerCase().split('.').pop() || 'gltf'
+    
+    try {
+      switch (fileExtension) {
+        case 'gltf':
+        case 'glb':
+          const gltfLoader = new GLTFLoader()
+          gltfLoader.load(
+            url,
+            (gltf) => {
+              URL.revokeObjectURL(url)
+              const scene = gltf.scene
+              let geometry: THREE.BufferGeometry | undefined
+              let material: THREE.Material | undefined
+              
+              // 从场景中提取第一个mesh的geometry和material
+              scene.traverse((child) => {
+                if (child instanceof THREE.Mesh && !geometry) {
+                  geometry = child.geometry
+                  material = child.material as THREE.Material
+                }
+              })
+              
+              resolve({ geometry, material, model: scene })
+            },
+            undefined,
+            (error) => {
+              URL.revokeObjectURL(url)
+              reject(error)
+            }
+          )
+          break
+          
+        case 'obj':
+          const objLoader = new OBJLoader()
+          objLoader.load(
+            url,
+            (object) => {
+              URL.revokeObjectURL(url)
+              let geometry: THREE.BufferGeometry | undefined
+              let material: THREE.Material | undefined
+              
+              object.traverse((child) => {
+                if (child instanceof THREE.Mesh && !geometry) {
+                  geometry = child.geometry
+                  material = child.material as THREE.Material
+                }
+              })
+              
+              resolve({ geometry, material, model: object })
+            },
+            undefined,
+            (error) => {
+              URL.revokeObjectURL(url)
+              reject(error)
+            }
+          )
+          break
+          
+        case 'fbx':
+          const fbxLoader = new FBXLoader()
+          fbxLoader.load(
+            url,
+            (object) => {
+              URL.revokeObjectURL(url)
+              let geometry: THREE.BufferGeometry | undefined
+              let material: THREE.Material | undefined
+              
+              object.traverse((child) => {
+                if (child instanceof THREE.Mesh && !geometry) {
+                  geometry = child.geometry
+                  material = child.material as THREE.Material
+                }
+              })
+              
+              resolve({ geometry, material, model: object })
+            },
+            undefined,
+            (error) => {
+              URL.revokeObjectURL(url)
+              reject(error)
+            }
+          )
+          break
+          
+        default:
+          URL.revokeObjectURL(url)
+          reject(new Error(`不支持的文件格式: ${fileExtension}`))
+      }
+    } catch (error) {
+      URL.revokeObjectURL(url)
+      reject(error)
+    }
+  })
+}

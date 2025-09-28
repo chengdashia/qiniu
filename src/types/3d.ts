@@ -12,6 +12,7 @@ export interface Model3D {
   createdAt: Date
   status: 'generating' | 'completed' | 'failed'
   userId?: string // 模型属主的用户ID
+  jobId?: string // 任务ID，用于下载模型
   // 新增字段用于文件上传
   fileInfo?: {
     originalName: string
@@ -38,6 +39,7 @@ export interface TextTo3DRequest {
   enable_pbr: boolean // 是否启用PBR材质，默认false
   face_count: number // 面数，范围40000-500000
   generate_type: 'Normal' | 'LowPoly' | 'Geometry' | 'Sketch' // 生成类型
+  modelFormat?: number // 模型格式，0: OBJ, 1: GLB
   // 保留原有字段以兼容旧代码
   text?: string
   quality?: 'low' | 'medium' | 'high'

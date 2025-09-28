@@ -610,7 +610,7 @@ func handleStatus(c *gin.Context) {
 	})
 }
 
-func handleDownload(c *gin.Context) {
+func handle  ad(c *gin.Context) {
 	jobID := c.Param("job_id")
 	idxStr := c.Param("idx")
 	idx, _ := strconv.Atoi(idxStr)

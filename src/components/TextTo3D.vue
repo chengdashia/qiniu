@@ -66,10 +66,17 @@
             <el-checkbox v-model="form.enable_pbr" :disabled="isGenerating">
               启用PBR材质
             </el-checkbox>
+            <el-form-item label="模型格式">
+              <el-radio-group v-model="form.modelFormat" :disabled="isGenerating">
+                <el-radio :label="0">OBJ格式</el-radio>
+                <el-radio :label="1">GLB格式</el-radio>
+              </el-radio-group>
+            </el-form-item>
           </div>
           <div class="option-hints">
             <p>• 提示词优化：AI自动优化您的文本描述，提高生成质量</p>
             <p>• PBR材质：生成更真实的材质效果</p>
+            <p>• 模型格式：选择下载的模型文件格式</p>
           </div>
         </el-form-item>
         
@@ -175,6 +182,16 @@
               查看
             </el-button>
             <el-button 
+              v-if="model.status === 'failed' || model.status === 'generating'"
+              size="small" 
+              type="warning" 
+              plain
+              @click.stop="retryDownload(model)"
+              :loading="isRetrying"
+            >
+              重试下载
+            </el-button>
+            <el-button 
               size="small" 
               type="danger" 
               plain
@@ -215,6 +232,7 @@ const form = reactive<TextTo3DRequest>({
   enable_pbr: false, // 默认为false
   face_count: 400000, // 默认40万面
   generate_type: 'Normal', // 默认Normal
+  modelFormat: 0, // 0: OBJ, 1: GLB
   // 兼容性字段
   text: '',
   quality: 'medium',
@@ -230,14 +248,17 @@ const rules = {
   ]
 }
 
+// 重试状态
+const isRetrying = ref(false)
+
 // 预设示例
 const examples = [
-  { prompt: '一只可爱的橙色小猫', generate_type: 'Normal' as const, polish: true, enable_pbr: false, face_count: 200000 },
-  { prompt: '现代简约的办公椅', generate_type: 'Normal' as const, polish: true, enable_pbr: true, face_count: 300000 },
-  { prompt: '科幻风格的宇宙飞船', generate_type: 'LowPoly' as const, polish: false, enable_pbr: false, face_count: 150000 },
-  { prompt: '古典欧式的花瓶', generate_type: 'Normal' as const, polish: true, enable_pbr: true, face_count: 400000 },
-  { prompt: '卡通风格的小房子', generate_type: 'LowPoly' as const, polish: false, enable_pbr: false, face_count: 100000 },
-  { prompt: '简约风格的小岛', generate_type: 'Geometry' as const, polish: false, enable_pbr: false, face_count: 80000 }
+  { prompt: '一只可爱的橙色小猫', generate_type: 'Normal' as const, polish: true, enable_pbr: false, face_count: 200000, modelFormat: 0 },
+  { prompt: '现代简约的办公椅', generate_type: 'Normal' as const, polish: true, enable_pbr: true, face_count: 300000, modelFormat: 1 },
+  { prompt: '科幻风格的宇宙飞船', generate_type: 'LowPoly' as const, polish: false, enable_pbr: false, face_count: 150000, modelFormat: 0 },
+  { prompt: '古典欧式的花瓶', generate_type: 'Normal' as const, polish: true, enable_pbr: true, face_count: 400000, modelFormat: 1 },
+  { prompt: '卡通风格的小房子', generate_type: 'LowPoly' as const, polish: false, enable_pbr: false, face_count: 100000, modelFormat: 0 },
+  { prompt: '简约风格的小岛', generate_type: 'Geometry' as const, polish: false, enable_pbr: false, face_count: 80000, modelFormat: 1 }
 ]
 
 // 计算属性
@@ -274,6 +295,7 @@ async function handleGenerate() {
       enable_pbr: form.enable_pbr,
       face_count: form.face_count,
       generate_type: form.generate_type,
+      modelFormat: form.modelFormat,
       // 兼容性字段
       text: form.prompt.trim(),
       quality: 'medium',
@@ -297,6 +319,7 @@ function useExample(example: typeof examples[0]) {
   form.polish = example.polish
   form.enable_pbr = example.enable_pbr
   form.face_count = example.face_count
+  form.modelFormat = example.modelFormat
   // 同步兼容性字段
   form.text = example.prompt
   ElMessage.info('已填入示例内容')
@@ -350,6 +373,31 @@ async function clearHistory() {
     ElMessage.success('历史记录已清空')
   } catch {
     // 用户取消
+  }
+}
+
+// 重试下载模型
+async function retryDownload(model: any) {
+  if (!model.id.startsWith('text_')) return
+  
+  isRetrying.value = true
+  
+  try {
+    // 提取job_id（假设存储在模型id中或其他地方）
+    const jobId = model.jobId || model.id.replace('text_', '')
+    
+    const success = await model3dStore.downloadModelManually(jobId)
+    
+    if (success) {
+      ElMessage.success('模型下载成功！')
+    } else {
+      ElMessage.error('下载失败，请稍后重试')
+    }
+  } catch (error) {
+    console.error('重试下载失败:', error)
+    ElMessage.error('下载过程中发生错误')
+  } finally {
+    isRetrying.value = false
   }
 }
 
