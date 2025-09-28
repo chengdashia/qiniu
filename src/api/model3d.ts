@@ -31,7 +31,7 @@ class Model3DApi {
   })
 
   /**
-   * 文本转3D模型 - 简化流程
+   * 文本转3D模型 - 完整轮询流程
    */
   async textTo3D(request: TextTo3DRequest): Promise<ApiResponse<{id: string, modelBlob?: Blob, prompt_used?: string}>> {
     try {
@@ -61,38 +61,7 @@ class Model3DApi {
       
       console.log('任务提交成功，job_id:', jobId)
       
-      // 步骤2: 直接尝试下载模型文件
-      try {
-        const downloadResponse = await this.client.get(`/api/download/${jobId}/0`, {
-          responseType: 'blob',
-          timeout: 120000 // 2分钟超时
-        })
-        
-        if (downloadResponse.data) {
-          console.log('模型文件下载成功')
-          return {
-            success: true,
-            data: {
-              id: jobId,
-              modelBlob: downloadResponse.data,
-              prompt_used: promptUsed
-            },
-            message: '3D模型生成并下载成功'
-          }
-        }
-      } catch (downloadError) {
-        console.error('下载模型文件失败:', downloadError)
-        // 下载失败，返回job_id以便后续处理
-        return {
-          success: true,
-          data: {
-            id: jobId,
-            prompt_used: promptUsed
-          },
-          message: '任务提交成功，但下载失败，请稍后重试'
-        }
-      }
-      
+      // 返回任务ID，轮询将在store中处理
       return {
         success: true,
         data: {

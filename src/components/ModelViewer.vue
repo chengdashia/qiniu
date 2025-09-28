@@ -251,9 +251,16 @@ function loadModel(model: Model3D) {
     // 重置线框模式状态
     wireframeMode.value = false
     
-    setTimeout(() => {
-      loading.value = false
-    }, 500)
+    // 立即更新加载状态，不等待固定延迟
+    loading.value = false
+    
+    // 立即触发一次渲染确保显示
+    if (viewer.value) {
+      setTimeout(() => {
+        // 强制刷新视图
+        viewer.value?.updateConfig({})
+      }, 100)
+    }
   } catch (error) {
     console.error('加载模型失败:', error)
     ElMessage.error('模型加载失败')
