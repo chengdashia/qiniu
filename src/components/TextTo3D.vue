@@ -175,6 +175,16 @@
               查看
             </el-button>
             <el-button 
+              v-if="model.status === 'failed' || model.status === 'generating'"
+              size="small" 
+              type="warning" 
+              plain
+              @click.stop="retryDownload(model)"
+              :loading="isRetrying"
+            >
+              重试下载
+            </el-button>
+            <el-button 
               size="small" 
               type="danger" 
               plain
@@ -229,6 +239,9 @@ const rules = {
     { max: 500, message: '描述不能超过500个字符', trigger: 'blur' }
   ]
 }
+
+// 重试状态
+const isRetrying = ref(false)
 
 // 预设示例
 const examples = [
@@ -350,6 +363,31 @@ async function clearHistory() {
     ElMessage.success('历史记录已清空')
   } catch {
     // 用户取消
+  }
+}
+
+// 重试下载模型
+async function retryDownload(model: any) {
+  if (!model.id.startsWith('text_')) return
+  
+  isRetrying.value = true
+  
+  try {
+    // 提取job_id（假设存储在模型id中或其他地方）
+    const jobId = model.jobId || model.id.replace('text_', '')
+    
+    const success = await model3dStore.downloadModelManually(jobId)
+    
+    if (success) {
+      ElMessage.success('模型下载成功！')
+    } else {
+      ElMessage.error('下载失败，请稍后重试')
+    }
+  } catch (error) {
+    console.error('重试下载失败:', error)
+    ElMessage.error('下载过程中发生错误')
+  } finally {
+    isRetrying.value = false
   }
 }
 

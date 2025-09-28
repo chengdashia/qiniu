@@ -12,6 +12,7 @@ export interface Model3D {
   createdAt: Date
   status: 'generating' | 'completed' | 'failed'
   userId?: string // 模型属主的用户ID
+  jobId?: string // 任务ID，用于下载模型
   // 新增字段用于文件上传
   fileInfo?: {
     originalName: string
